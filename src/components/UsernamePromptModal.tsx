@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { Link } from 'react-router-dom';
 
 export default function UsernamePromptModal() {
   const [username, setUsername] = useState('');
@@ -18,14 +19,14 @@ export default function UsernamePromptModal() {
         throw new Error('Username can only contain letters, numbers, underscores, and hyphens');
       }
 
-      const response = await apiFetch('/api/setup-username', {
+      const data = await apiFetch('/api/setup-username', {
         method: 'POST',
         body: JSON.stringify({ username })
       });
 
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to set username');
+      // Store the new token if one is returned
+      if (data.token) {
+        localStorage.setItem('token', data.token);
       }
 
       // Username set successfully, reload the page to refresh user data
@@ -81,6 +82,9 @@ export default function UsernamePromptModal() {
           >
             {isLoading ? 'Setting username...' : 'Continue'}
           </button>
+          <p className="text-sm text-gray-400">
+            By continuing, you agree to the <Link to="/terms" className="text-blue-500 hover:text-blue-400">Terms of Service</Link> and <Link to="/privacy" className="text-blue-500 hover:text-blue-400">Privacy Policy</Link>.  
+          </p>
         </form>
       </div>
     </div>

@@ -45,6 +45,12 @@ export default function ConversationChat() {
     setPendingMessage(messageContent);
     setAutoScroll(true);
 
+    // Reset textarea height
+    const textarea = document.querySelector('textarea');
+    if (textarea) {
+      textarea.style.height = '40px';
+    }
+
     try {
       await sendMessage(messageContent);
     } catch (err) {
@@ -157,29 +163,35 @@ export default function ConversationChat() {
       <div className="flex p-4 border-t border-gray-700 w-full items-center justify-center">
         <div className="flex flex-col items-center justify-center w-full">
         <div className="flex gap-2 max-w-4xl w-full">
-          <input
-            type="text"
+          <textarea
             value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+            onChange={(e) => {
+              setNewMessage(e.target.value);
+              // Reset height before calculating new height
+              e.target.style.height = 'auto';
+              // Set new height based on scrollHeight
+              e.target.style.height = `${e.target.scrollHeight}px`;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
             placeholder="Type your message..."
-            className="flex-1 bg-gray-800 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="flex-1 bg-gray-800 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-[40px] max-h-[200px] overflow-y-auto"
             disabled={isLoading}
+            rows={1}
           />
           <button
             onClick={handleSend}
-            className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg flex items-center gap-2 disabled:opacity-50"
+            className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg flex items-center gap-2 disabled:opacity-50 h-[40px]"
             disabled={isLoading || !newMessage.trim()}
           >
             <FiSend className="inline-block" /> Send
           </button>
         </div>
         
-        {isNewConversation && (
-          <p className="text-sm text-gray-400 mt-2">
-            This conversation will be saved when you send your first message
-          </p>
-        )}
         </div>
       </div>
     </div>

@@ -19,12 +19,12 @@ const router = createBrowserRouter([
       { index: true, element: <Home /> },
       { path: 'auth-success', element: <AuthSuccess /> },
       { path: 'setup-username', element: <SetupUsername /> },
+      { path: 'explore', element: <Explore /> },
       {
         path: 'dashboard',
         element: <ProtectedRoute />,
         children: [
           { index: true, element: <Dashboard /> },
-          { path: 'explore', element: <Explore /> },
           {
             path: 'characters/:characterId',
             element: <CharacterLayout />,

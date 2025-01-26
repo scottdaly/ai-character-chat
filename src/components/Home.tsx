@@ -36,21 +36,21 @@ export default function Home() {
         <div className="container mx-auto flex items-center justify-between">
           <h1 className="text-2xl font-bold">Nevermade</h1>
           <div className="flex items-center gap-4">
+            <Link
+              to="/explore"
+              className="rounded-lg px-4 py-2 hover:bg-gray-700"
+            >
+              Explore
+            </Link>
             {user ? (
               <>
-                <span className="text-gray-400">Welcome, {user.displayName}</span>
                 <Link
                   to="/dashboard"
-                  className="rounded-lg bg-blue-600 px-4 py-2 hover:bg-blue-500"
+                  className="rounded-lg border border-gray-400 hover:bg-gray-700 px-4 py-2"
                 >
                   Dashboard
                 </Link>
-                <button
-                  onClick={logout}
-                  className="rounded-lg bg-red-600 px-4 py-2 hover:bg-red-500"
-                >
-                  Sign Out
-                </button>
+                
               </>
             ) : (
               <button
