@@ -8,6 +8,7 @@ export interface Character {
     createdAt: Date;
     UserId: number;
     isPublic: boolean;
+    messageCount: number;
     User?: {
       username: string;
       displayName: string;

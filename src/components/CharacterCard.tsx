@@ -4,12 +4,14 @@ import { Character } from '../types';
 
 interface CharacterCardProps {
   character: Character;
+  showMessageCount?: boolean;
+  showPublicStatus?: boolean;
 }
 
-const getModelAlias = (modelId: string): string => {
+export const getModelAlias = (modelId: string): string => {
   switch (modelId) {
     case 'chatgpt-4o-latest':
-      return 'GPT-4o Latest';
+      return 'GPT-4o';
     case 'gpt-4o-mini':
       return 'GPT-4o Mini';
     case 'claude-3-5-sonnet-20241022':
@@ -21,15 +23,25 @@ const getModelAlias = (modelId: string): string => {
   }
 };
 
-export default function CharacterCard({ character }: CharacterCardProps) {
+export default function CharacterCard({ character, showMessageCount = false, showPublicStatus = false }: CharacterCardProps) {
 
   return (
     <Link
       to={`/dashboard/characters/${character.id}/conversations`}
-      className="block bg-gray-800 rounded-lg p-4 hover:bg-gray-700 transition-colors"
+      className="block bg-gray-800 rounded-lg p-4 hover:bg-gray-700 transition-colors flex flex-col justify-between"
     >
+      <div className="flex flex-col">
       <div className="flex justify-between items-start mb-2">
-        <h3 className="text-lg font-semibold">{character.name}</h3>
+        <h3 className="text-xl font-semibold">{character.name}</h3>
+        <span className="px-2 py-1 bg-gray-700 rounded text-gray-400 text-sm">
+          {getModelAlias(character.model)}
+        </span>
+      </div>
+      
+      <p className="text-gray-400 text-sm mb-4">{character.description}</p>
+      </div>
+      <div className="flex items-center justify-between">
+        <div className="mb-2 text-sm">
         {character.User?.isOfficial ? (
           <span className="flex items-center gap-1">
             <span className="text-blue-400 font-medium">Nevermade</span>
@@ -38,25 +50,31 @@ export default function CharacterCard({ character }: CharacterCardProps) {
             </span>
           </span>
         ) : (
-          <span>by @{character.User?.username || 'unknown'}</span>
+          <span className="text-gray-400">by @{character.User?.username || 'unknown'}</span>
         )}
       </div>
-      <p className="text-gray-400 text-sm mb-4">{character.description}</p>
       <div className="flex items-center justify-between text-sm text-gray-500">
-        <span className="px-2 py-1 bg-gray-700 rounded text-gray-400">
-          {getModelAlias(character.model)}
-        </span>
-        {character.isPublic ? (
-          <span className="flex items-center gap-1 text-gray-400">
-            <FiGlobe size={14} />
-            Public
-          </span>
-        ) : (
-          <span className="flex items-center gap-1 text-gray-400">
-            <FiLock size={14} />
-            Private
-          </span>
+        <div className="flex items-center gap-2">
+          {showMessageCount && (
+            <span className="text-gray-400">
+              {character.messageCount.toLocaleString()} messages
+            </span>
+          )}
+        </div>
+        {showPublicStatus && (
+          character.isPublic ? (
+            <span className="flex items-center gap-1 text-gray-400">
+              <FiGlobe size={14} />
+              Public
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 text-gray-400">
+              <FiLock size={14} />
+              Private
+            </span>
+          )
         )}
+      </div>
       </div>
     </Link>
   );

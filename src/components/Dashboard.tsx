@@ -17,7 +17,8 @@ export default function Dashboard() {
     systemPrompt: '',
     createdAt: new Date(),
     UserId: user?.id ? Number(user.id) : 0,
-    isPublic: false
+    isPublic: false,
+    messageCount: 0
   });
 
   const handleCreateCharacter = async () => {
@@ -31,7 +32,8 @@ export default function Dashboard() {
         systemPrompt: '',
         createdAt: new Date(),
         UserId: user?.id ? Number(user.id) : 0,
-        isPublic: false
+        isPublic: false,
+        messageCount: 0
       });
     } catch (error) {
       console.error('Failed to create character:', error);
@@ -61,12 +63,6 @@ export default function Dashboard() {
         <div className="flex items-center gap-4">
           <Link to="/" className="text-2xl font-bold hover:text-blue-400 transition-colors">
             Nevermade
-          </Link>
-          <Link 
-            to="/dashboard/explore" 
-            className="text-gray-400 hover:text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
-          >
-            Explore
           </Link>
         </div>
         <button
@@ -101,7 +97,8 @@ export default function Dashboard() {
                 {characters.map(character => (
                   <CharacterCard 
                     key={character.id} 
-                    character={character} 
+                    character={character}
+                    showPublicStatus={character.UserId === Number(user?.id)}
                   />
                 ))}
               </div>
@@ -133,10 +130,14 @@ export default function Dashboard() {
                   onChange={(e) => setNewCharacter({ ...newCharacter, model: e.target.value })}
                   className="w-full bg-gray-700 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="gpt-4o-mini">GPT-4o Mini</option>
-                  <option value="chatgpt-4o-latest">GPT-4o Latest</option>
-                  <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
-                  <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku</option>
+                  <optgroup label="OpenAI">
+                    <option value="chatgpt-4o-latest">GPT-4o Latest</option>
+                    <option value="gpt-4o-mini">GPT-4o Mini</option>
+                  </optgroup>
+                  <optgroup label="Anthropic">
+                    <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+                    <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku</option>
+                  </optgroup>
                 </select>
                 
                 <textarea

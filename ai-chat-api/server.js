@@ -42,6 +42,10 @@ const Character = sequelize.define('Character', {
     isPublic: {
       type: DataTypes.BOOLEAN,
       defaultValue: false
+    },
+    messageCount: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0
     }
   }, {
     timestamps: true
@@ -97,6 +101,17 @@ const syncOptions = process.env.NODE_ENV === 'development' ?
       
       // Then add the UNIQUE constraint
       await sequelize.query('CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique ON Users(username) WHERE username IS NOT NULL');
+    }
+
+    // Check if messageCount column exists in Characters table
+    const hasMessageCountColumn = await sequelize.query(
+      "SELECT name FROM pragma_table_info('Characters') WHERE name = 'messageCount'",
+      { type: Sequelize.QueryTypes.SELECT }
+    );
+
+    if (hasMessageCountColumn.length === 0) {
+      // Add messageCount column with default value 0
+      await sequelize.query('ALTER TABLE Characters ADD COLUMN messageCount INTEGER DEFAULT 0');
     }
 
     // Create the official Nevermade user if it doesn't exist
@@ -441,6 +456,9 @@ app.post('/api/conversations/:conversationId/messages', authenticateToken, async
       ConversationId: conversation.id,
       CharacterId: conversation.CharacterId
     });
+
+    // Increment message count for the character
+    await conversation.Character.increment('messageCount');
 
     try {
       // Prepare conversation history for OpenAI

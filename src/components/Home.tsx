@@ -4,9 +4,11 @@ import { FcGoogle } from 'react-icons/fc';
 import { useAuth } from '../contexts/AuthContext';
 import { Link } from 'react-router-dom';
 import { Character } from '../types';
+import { useCharacters } from '../api/characters';
+import { getModelAlias } from './CharacterCard';
 
 export default function Home() {
-  const { user, login, logout } = useAuth();
+  const { user, login } = useAuth();
   const [characters, setCharacters] = useState<Character[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -66,9 +68,9 @@ export default function Home() {
 
       <main className="container mx-auto px-4 py-8">
         <section className="mb-16 text-center">
-          <h1 className="mb-6 text-5xl font-bold">Nevermade</h1>
-          <p className="mx-auto mb-8 max-w-2xl text-xl text-gray-400">
-            Create and interact with custom AI personalities powered by state-of-the-art language models
+          
+          <p className="mx-auto mb-8 max-w-2xl text-3xl text-gray-400">
+            Create your own custom AI personalities powered by state-of-the-art language models
           </p>
           {user ? (
             <Link
@@ -118,17 +120,18 @@ export default function Home() {
                           )}
                         </p>
                       </div>
-                    </div>
-                    <p className="text-gray-400 mb-4 line-clamp-3">{character.description}</p>
-                    <div className="flex items-center justify-between text-sm">
+                      <div className="flex items-center justify-between text-sm">
                       <span className={`px-2 py-1 rounded ${
                         character.User?.isOfficial 
                           ? 'bg-blue-500/20 text-blue-400' 
                           : 'bg-gray-700 text-gray-400'
                       }`}>
-                        {character.model}
+                        {getModelAlias(character.model)}
                       </span>
                     </div>
+                    </div>
+                    <p className="text-gray-400 mb-4 line-clamp-3">{character.description}</p>
+                    
                   </Link>
                 ) : (
                   <button
@@ -160,7 +163,7 @@ export default function Home() {
                           ? 'bg-blue-500/20 text-blue-400' 
                           : 'bg-gray-700 text-gray-400'
                       }`}>
-                        {character.model}
+                        {getModelAlias(character.model)}
                       </span>
                       <span className="text-blue-400">Sign in to chat →</span>
                     </div>

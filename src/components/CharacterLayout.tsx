@@ -6,6 +6,7 @@ import ConversationList from './ConversationList';
 import { useCharacter } from '../api/characters';
 import { useAuth } from '../contexts/AuthContext';
 import CharacterSettings from './CharacterSettings';
+import { getModelAlias } from './CharacterCard';
 
 export default function CharacterLayout() {
   const { characterId } = useParams();
@@ -57,7 +58,7 @@ export default function CharacterLayout() {
             )}
           </div>
           <h2 className="text-lg font-semibold">{character?.name}</h2>
-          <p className="text-sm text-gray-400">{character?.model}</p>
+          <p className="text-sm text-gray-400">{character?.model && getModelAlias(character.model)}</p>
         </div>
         <div className="flex-1 overflow-y-auto">
           <ConversationList />
