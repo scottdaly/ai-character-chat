@@ -79,7 +79,7 @@ export default function ConversationList() {
                 </span>
                 <button
                   onClick={(e) => handleDelete(e, convo.id)}
-                  className="p-1.5 rounded-lg cursor-pointer text-gray-400 hover:text-red-400 hover:bg-gray-800 opacity-0 group-hover:opacity-100 transition-all"
+                  className="p-1.5 rounded-lg cursor-pointer text-gray-400 hover:text-red-400 hover:bg-gray-800 md:opacity-0 md:group-hover:opacity-100 transition-all"
                   title="Delete conversation"
                 >
                   <FiTrash2 />

@@ -4,7 +4,6 @@ import { FcGoogle } from 'react-icons/fc';
 import { useAuth } from '../contexts/AuthContext';
 import { Link } from 'react-router-dom';
 import { Character } from '../types';
-import { useCharacters } from '../api/characters';
 import { getModelAlias } from './CharacterCard';
 
 export default function Home() {

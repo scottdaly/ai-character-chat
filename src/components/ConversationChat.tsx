@@ -93,24 +93,26 @@ export default function ConversationChat() {
       {/* Messages Container */}
       <div
         id="messages-container"
-        className="flex-1 overflow-y-auto p-4 space-y-4 w-full max-w-4xl"
+        className="flex-1 p-4 space-y-4 w-full overflow-y-auto"
         onScroll={(e) => {
           const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
           setAutoScroll(scrollHeight - scrollTop - clientHeight < 50);
         }}
       >
+        <div className="max-w-4xl mx-auto flex flex-col h-full">
         {messages.length === 0 && !pendingMessage ? (
           <div className="flex items-center justify-center h-full text-gray-400">
             {isNewConversation
-              ? 'Type your first message to start the conversation'
-              : 'No messages in this conversation'}
+              ? <p className="text-gray-400">Type your first message to start the conversation</p>
+              : <p className="text-gray-400">No messages in this conversation</p>
+            }
           </div>
         ) : (
           <>
             {messages.map((message) => (
               <div
                 key={message.id}
-                className={`flex flex-col ${message.role === 'user' ? 'items-end' : 'items-start'}`}
+                className={`flex flex-col pb-4 ${message.role === 'user' ? 'items-end' : 'items-start'}`}
               >
                 <div
                   className={`max-w-2xl p-4 rounded-xl ${
@@ -157,6 +159,7 @@ export default function ConversationChat() {
             )}
           </>
         )}
+        </div>
       </div>
 
       {/* Input Area */}

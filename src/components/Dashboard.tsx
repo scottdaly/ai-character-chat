@@ -74,7 +74,7 @@ export default function Dashboard() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 p-4">
+      <div className="flex-1 p-4 bg-slate-900">
         <div className="max-w-6xl mx-auto">
           {/* Welcome Message */}
           <div className="mb-8">
