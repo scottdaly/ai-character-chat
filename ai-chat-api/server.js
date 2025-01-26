@@ -539,7 +539,7 @@ app.post('/api/conversations/:conversationId/messages', authenticateToken, async
             temperature: 0.7
           });
 
-          const newTitle = titleResponse.choices[0].message.content.trim();
+          const newTitle = titleResponse.choices[0].message.content.trim().replace(/^["']|["']$/g, '');
           await conversation.update({ 
             title: newTitle,
             lastMessage: aiResponse.substring(0, 50)
@@ -726,6 +726,31 @@ app.delete('/api/conversations/:conversationId', authenticateToken, async (req, 
   } catch (err) {
     console.error('Failed to delete conversation:', err);
     res.status(500).json({ error: 'Failed to delete conversation' });
+  }
+});
+
+// Add endpoint to get a single conversation
+app.get('/api/conversations/:conversationId', authenticateToken, async (req, res) => {
+  try {
+    const conversation = await Conversation.findOne({
+      where: {
+        id: req.params.conversationId,
+        UserId: req.user.id
+      },
+      include: [{
+        model: Character,
+        attributes: ['name', 'model']
+      }]
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    res.json(conversation);
+  } catch (err) {
+    console.error('Failed to load conversation:', err);
+    res.status(500).json({ error: 'Failed to load conversation' });
   }
 });
 

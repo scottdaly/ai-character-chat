@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { FiSend } from 'react-icons/fi';
 import { useMessages } from '../api/messages';
-
+import { useConversation } from '../api/conversations';
 
 export default function ConversationChat() {
   const { characterId, conversationId } = useParams();
@@ -10,15 +10,28 @@ export default function ConversationChat() {
   const {
     messages,
     sendMessage,
-    isLoading,
-    error,
+    isLoading: messagesLoading,
+    error: messagesError,
     isNewConversation,
     realConversationId,
     loadMessages
   } = useMessages(characterId!, conversationId!);
+  const { conversation } = useConversation(conversationId!);
   const [newMessage, setNewMessage] = useState('');
   const [autoScroll, setAutoScroll] = useState(true);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+
+  // Update document title when conversation changes
+  useEffect(() => {
+    if (conversation) {
+      document.title = `${conversation.title} - NeverMade`;
+    } else if (isNewConversation) {
+      document.title = 'NeverMade - AI Chat';
+    }
+    return () => {
+      document.title = 'NeverMade - AI Chat';
+    };
+  }, [conversation, isNewConversation]);
 
   // Handle URL update when real conversation is created
   useEffect(() => {
@@ -80,10 +93,10 @@ export default function ConversationChat() {
     );
   }
 
-  if (error) {
+  if (messagesError) {
     return (
       <div className="flex-1 flex items-center justify-center text-red-500">
-        Error: {error.message}
+        Error: {messagesError.message}
       </div>
     );
   }
@@ -131,7 +144,7 @@ export default function ConversationChat() {
                 </span>
               </div>
             ))}
-            {pendingMessage && !isLoading && (
+            {pendingMessage && !messagesLoading && (
               <div
                 key="pending-message"
                 className="flex flex-col items-end"
@@ -147,7 +160,7 @@ export default function ConversationChat() {
                 </span>
               </div>
             )}
-            {isLoading && (
+            {messagesLoading && (
               <div className="flex justify-start">
                 <div className="max-w-2xl p-4 rounded-xl bg-gray-800 text-gray-100">
                   <div className="flex items-center gap-2">
@@ -183,18 +196,17 @@ export default function ConversationChat() {
             }}
             placeholder="Type your message..."
             className="flex-1 bg-gray-800 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-[40px] max-h-[200px] overflow-y-auto"
-            disabled={isLoading}
+            disabled={messagesLoading}
             rows={1}
           />
           <button
             onClick={handleSend}
             className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg flex items-center gap-2 disabled:opacity-50 h-[40px]"
-            disabled={isLoading || !newMessage.trim()}
+            disabled={messagesLoading || !newMessage.trim()}
           >
             <FiSend className="inline-block" /> Send
           </button>
         </div>
-        
         </div>
       </div>
     </div>
