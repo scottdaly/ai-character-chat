@@ -498,7 +498,6 @@ app.post('/api/conversations/:conversationId/messages', authenticateToken, async
 
     try {
       // Prepare conversation history for OpenAI
-      console.log('System content for OpenAI:', conversation.Character.systemPrompt);
       const messageHistory = [
         { role: 'system', content: conversation.Character.systemPrompt },
         ...previousMessages.map(msg => ({
@@ -515,7 +514,6 @@ app.post('/api/conversations/:conversationId/messages', authenticateToken, async
         // Format messages for Claude API
         const formattedMessages = messageHistory.map(msg => {
           if (msg.role === 'system') {
-            console.log('(Claude) Here is your character description and instructions:', msg.content);
             return {
               role: 'user',
               content: `You are ${conversation.Character.name}. Here is your character description and instructions:\n${msg.content}`

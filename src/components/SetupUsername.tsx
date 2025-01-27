@@ -25,19 +25,22 @@ export default function SetupUsername() {
     setIsLoading(true);
 
     try {
+      console.log('Sending username:', username);
       const response = await apiFetch('/api/setup-username', {
         method: 'POST',
         body: JSON.stringify({ username })
       });
 
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to set username');
+      console.log('Response:', response);
+      console.log("Response success?", response.success);
+
+      if (response.success === false) {
+        throw new Error(response.error || 'Failed to set username');
       }
 
       // Store the new token if one is returned
-      if (data.token) {
-        localStorage.setItem('token', data.token);
+      if (response.token) {
+        localStorage.setItem('token', response.token);
       }
 
       // Username set successfully, redirect to dashboard
