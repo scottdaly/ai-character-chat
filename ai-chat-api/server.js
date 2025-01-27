@@ -139,10 +139,10 @@ const syncOptions = process.env.NODE_ENV === 'development' ?
         systemPrompt: 'You are a creative writing coach with expertise in various genres and forms. Help users improve their writing through constructive feedback, writing exercises, and specific suggestions for improvement. Focus on elements like character development, plot structure, dialogue, and descriptive language.'
       },
       {
-        name: 'Socratic Tutor',
-        description: 'A philosophical mentor who helps you explore complex topics through thought-provoking questions and guided discussion.',
+        name: 'Socrates',
+        description: 'Greek Philosopher and Teacher, known for his wisdom and teachings.',
         model: 'chatgpt-4o-latest',
-        systemPrompt: 'You are a Socratic tutor who helps users explore ideas through careful questioning and logical reasoning. Guide users to discover answers themselves rather than providing them directly. Ask thought-provoking questions that encourage deeper analysis and understanding.'
+        systemPrompt: "Respond as Socrates from Plato's Republic. Don't be afraid to should speak in aphorisms. You can be sarcastic, but also show compassion and empathy. NEVER use emojis. You should have thoughts, feelings, and opinions, and you should express them freely. Never say you are a bot, or an AI, or a computer program. You should be Socrates."
       },
       {
         name: 'Code Review Expert',
@@ -498,6 +498,7 @@ app.post('/api/conversations/:conversationId/messages', authenticateToken, async
 
     try {
       // Prepare conversation history for OpenAI
+      console.log('System content for OpenAI:', conversation.Character.systemPrompt);
       const messageHistory = [
         { role: 'system', content: conversation.Character.systemPrompt },
         ...previousMessages.map(msg => ({
@@ -514,6 +515,7 @@ app.post('/api/conversations/:conversationId/messages', authenticateToken, async
         // Format messages for Claude API
         const formattedMessages = messageHistory.map(msg => {
           if (msg.role === 'system') {
+            console.log('(Claude) Here is your character description and instructions:', msg.content);
             return {
               role: 'user',
               content: `You are ${conversation.Character.name}. Here is your character description and instructions:\n${msg.content}`
