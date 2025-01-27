@@ -13,7 +13,6 @@ const app = express();
 
 console.log('CLIENT_ID:', process.env.GOOGLE_CLIENT_ID);
 console.log('CLIENT_SECRET:', process.env.GOOGLE_CLIENT_SECRET);
-console.log("environment variables loaded", process.env)
 
 // Database Configuration
 const sequelize = new Sequelize({
@@ -261,7 +260,9 @@ app.get('/api/characters/explore', authenticateToken, async (req, res) => {
 passport.use(new GoogleStrategy({
   clientID: process.env.GOOGLE_CLIENT_ID,
   clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-  callbackURL: '/auth/google/callback'
+  callbackURL: process.env.NODE_ENV === 'production'
+  ? 'https://nevermade.co/auth/google/callback'
+  : `http://localhost:${process.env.PORT}/auth/google/callback`
 }, async (accessToken, refreshToken, profile, done) => {
   try {
     const [user] = await User.findOrCreate({
@@ -298,6 +299,10 @@ app.get('/auth/google/callback',
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
+
+    console.log('got token', token)
+    console.log('Environment:', process.env.NODE_ENV);
+    console.log('Frontend URL:', process.env.FRONTEND_URL);
     // Redirect to username setup if username is not set
     const redirectUrl = !req.user.username ? 
       `${process.env.FRONTEND_URL}/setup-username?token=${token}` :
