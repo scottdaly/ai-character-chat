@@ -11,9 +11,6 @@ require('dotenv').config();
 
 const app = express();
 
-console.log('CLIENT_ID:', process.env.GOOGLE_CLIENT_ID);
-console.log('CLIENT_SECRET:', process.env.GOOGLE_CLIENT_SECRET);
-
 // Database Configuration
 const sequelize = new Sequelize({
   dialect: 'sqlite',
@@ -184,6 +181,22 @@ app.use(cors({
   credentials: true
 }));
 app.use(passport.initialize());
+
+app.use((req, res, next) => {
+  console.log('Incoming request:', {
+    method: req.method,
+    url: req.url,
+    path: req.path,
+    baseUrl: req.baseUrl,
+    originalUrl: req.originalUrl,
+    headers: {
+      host: req.headers.host,
+      origin: req.headers.origin,
+      referer: req.headers.referer
+    }
+  });
+  next();
+});
 
 // Auth Middleware - Define before routes
 const authenticateToken = async (req, res, next) => {
