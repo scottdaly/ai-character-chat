@@ -126,8 +126,8 @@ export default function ConversationChat() {
         {messages.length === 0 && !pendingMessage ? (
           <div className="flex items-center justify-center h-full text-gray-400">
             {isNewConversation
-              ? <p className="text-gray-400">Type your first message to start the conversation</p>
-              : <p className="text-gray-400">No messages in this conversation</p>
+              ? <p className="text-gray-400 text-center">Type your first message to start the conversation</p>
+              : <p className="text-gray-400 text-center">No messages in this conversation</p>
             }
           </div>
         ) : (
