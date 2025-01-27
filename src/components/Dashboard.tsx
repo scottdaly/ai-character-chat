@@ -91,7 +91,7 @@ export default function Dashboard() {
          
 
           {/* Your Characters Section */}
-          {characters.length > 0 && (
+          {characters.length > 0 ? (
             <div className="mb-8">
               <h2 className="text-xl font-semibold mb-4">Your Characters</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -102,6 +102,16 @@ export default function Dashboard() {
                     showPublicStatus={character.UserId === Number(user?.id)}
                   />
                 ))}
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center gap-2">
+              <p className="text-gray-400 text-center text-xl">You don't have any characters yet</p>
+              <p className="text-gray-400 text-center text-xl">Create one to get started or explore public characters</p>
+              <div className="flex items-center gap-2">
+              <button onClick={() => setShowCharacterForm(true)} className="bg-blue-700 hover:bg-blue-600 text-white py-3 px-6 rounded-lg flex items-center justify-center gap-2 mt-2 cursor-pointer"><FiPlus size={20} /> Create Character</button>
+                <Link to="/explore" className="border border-zinc-800 hover:bg-zinc-800 text-white py-3 px-6 rounded-lg flex items-center justify-center gap-2 mt-2 cursor-pointer">Explore</Link>
+                
               </div>
             </div>
           )}

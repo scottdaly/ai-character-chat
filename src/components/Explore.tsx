@@ -35,11 +35,11 @@ export default function Explore() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-100">
-      <nav className="bg-gray-800 p-4">
+    <div className="min-h-screen bg-zinc-900 text-gray-100">
+      <nav className="p-4">
         <div className="container mx-auto flex items-center justify-between">
           <Link to="/" className="text-2xl font-bold hover:text-blue-400 transition-colors">
-            Nevermade
+            NeverMade
           </Link>
           <div className="flex items-center gap-4">
             <Link
