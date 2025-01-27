@@ -18,12 +18,9 @@
 }
 
 /* Custom Scrollbar Styles */
-#messages-container::-webkit-scrollbar {
-  width: 8px;
-}
 
 #messages-container::-webkit-scrollbar-track {
-  background: #1f2937; /* gray-800 */
+  background: #18181b; /* gray-800 */
 }
 
 #messages-container::-webkit-scrollbar-thumb {
@@ -37,6 +34,38 @@
 
 /* Firefox scrollbar styles */
 #messages-container {
-  scrollbar-width: thin;
+  scrollbar-color: #4b5563 #18181b;
+}
+
+.dark-scrollbar {
   scrollbar-color: #4b5563 #1f2937;
+}
+
+.dark-scrollbar::-webkit-scrollbar-track {
+  background: #1f2937;
+}
+
+.dark-scrollbar::-webkit-scrollbar-thumb {
+  background: #4b5563;
+}
+
+.dark-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+
+.minimal-dark-scrollbar {
+  scrollbar-color: #4b5563 #18181b;
+}
+
+.minimal-dark-scrollbar::-webkit-scrollbar-track {
+  background: #18181b;
+}
+
+.minimal-dark-scrollbar::-webkit-scrollbar-thumb {
+  background: #4b5563;
+}
+
+.minimal-dark-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
 }

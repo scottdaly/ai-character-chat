@@ -32,10 +32,13 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-100">
-      <nav className="bg-gray-800 p-4">
+    <div className="min-h-screen bg-zinc-900 text-gray-100">
+      <nav className="p-4">
         <div className="container mx-auto flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Nevermade</h1>
+          <div className="flex items-center gap-2">
+          {/* <img src={Logo} alt="NeverMade" className="w-8 h-8 mt-1" /> */}
+          <h1 className="text-2xl font-bold text-white">NeverMade</h1>
+          </div>
           <div className="flex items-center gap-4">
             <Link
               to="/explore"
@@ -66,17 +69,20 @@ export default function Home() {
       </nav>
 
       <main className="container mx-auto px-4 py-8">
-        <section className="mb-16 text-center">
+        <section className="mt-8 mb-24 md:my-32 text-center px-12 md:px-0 mx-auto max-w-4xl">
           
-          <p className="mx-auto mb-8 max-w-2xl text-3xl text-gray-400">
-            Create your own custom AI personalities powered by state-of-the-art language models
+          <p className="mx-auto mb-6 text-6xl text-white">
+            Chat with custom AI personalities
+          </p>
+          <p className="mx-auto mb-12 max-w-4xl text-3xl text-zinc-400">
+            Powered by your choice of state-of-the-art language models
           </p>
           {user ? (
             <Link
               to="/dashboard"
               className="inline-block rounded-lg bg-blue-600 px-8 py-3 text-lg font-semibold hover:bg-blue-500"
             >
-              Go to Dashboard
+              Go to your Dashboard
             </Link>
           ) : (
             <button
@@ -89,7 +95,7 @@ export default function Home() {
         </section>
 
         <section className="mb-16">
-          <h2 className="text-3xl font-bold mb-8 text-center">Featured Characters</h2>
+         
           {isLoading ? (
             <div className="flex justify-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
@@ -101,7 +107,7 @@ export default function Home() {
                   <Link
                     key={character.id}
                     to={`/dashboard/characters/${character.id}`}
-                    className="p-6 bg-gray-800 rounded-xl hover:bg-gray-700 transition-colors"
+                    className="p-6 bg-zinc-800 rounded-xl hover:bg-zinc-700 transition-colors"
                   >
                     <div className="flex items-start justify-between mb-4">
                       <div>
@@ -136,7 +142,7 @@ export default function Home() {
                   <button
                     key={character.id}
                     onClick={login}
-                    className="p-6 bg-gray-800 rounded-xl hover:bg-gray-700 transition-colors text-left w-full"
+                    className="p-6 bg-zinc-800 rounded-xl hover:bg-zinc-700 transition-colors text-left w-full"
                   >
                     <div className="flex items-start justify-between mb-4">
                       <div>
@@ -173,28 +179,7 @@ export default function Home() {
           )}
         </section>
 
-        <section className="grid gap-8 md:grid-cols-3">
-          <div className="rounded-xl border-2 border-gray-700 p-6">
-            <h3 className="mb-3 text-xl font-semibold">🤖 Custom Characters</h3>
-            <p className="text-gray-400">
-              Design unique AI personalities with custom prompts and model configurations
-            </p>
-          </div>
-          
-          <div className="rounded-xl border-2 border-gray-700 p-6">
-            <h3 className="mb-3 text-xl font-semibold">💬 Natural Conversations</h3>
-            <p className="text-gray-400">
-              Engage in fluid, contextual dialogues powered by advanced language models
-            </p>
-          </div>
-          
-          <div className="rounded-xl border-2 border-gray-700 p-6">
-            <h3 className="mb-3 text-xl font-semibold">🔒 Secure & Private</h3>
-            <p className="text-gray-400">
-              Your conversations are protected with enterprise-grade security
-            </p>
-          </div>
-        </section>
+       
       </main>
     </div>
   );

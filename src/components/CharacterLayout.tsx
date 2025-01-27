@@ -52,7 +52,7 @@ export default function CharacterLayout() {
   }, []);
 
   return (
-    <div className="flex h-screen bg-gray-900 w-full">
+    <div className="flex h-screen bg-zinc-900 w-full">
       {/* Mobile Sidebar Toggle Button */}
       {!isSidebarOpen && (
         <button
@@ -64,10 +64,10 @@ export default function CharacterLayout() {
       )}
 
       {/* Conversation List Sidebar */}
-      <div className={`fixed md:static inset-y-0 left-0 w-72 bg-gray-800 border-r border-gray-700 flex flex-col transform transition-transform duration-300 ease-in-out ${
+      <div className={`fixed md:static inset-y-0 left-0 w-72 bg-zinc-900 border-r border-zinc-700 flex flex-col transform transition-transform duration-300 ease-in-out ${
         isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
       } md:translate-x-0 z-40`}>
-        <div className="p-4 border-b border-gray-700">
+        <div className="p-4 border-b border-zinc-700">
           <div className="flex items-center justify-between mb-4">
             <button
               onClick={() => navigate('/dashboard')}
@@ -75,7 +75,14 @@ export default function CharacterLayout() {
             >
               <FiArrowLeft /> Back to Dashboard
             </button>
-            <div className="flex items-center gap-2">
+            
+          </div>
+          <div className='flex flex-row justify-between items-center'>
+          <div className='flex flex-col'>
+          <h2 className="text-lg font-semibold">{character?.name}</h2>
+          <p className="text-sm text-gray-400">{character?.model && getModelAlias(character.model)}</p>
+          </div>
+          <div className="flex items-center gap-2">
               {isOwner && (
                 <button
                   onClick={() => setShowSettings(true)}
@@ -92,11 +99,9 @@ export default function CharacterLayout() {
                 <FiX size={20} />
               </button>
             </div>
-          </div>
-          <h2 className="text-lg font-semibold">{character?.name}</h2>
-          <p className="text-sm text-gray-400">{character?.model && getModelAlias(character.model)}</p>
+            </div>
         </div>
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto minimal-dark-scrollbar">
           <ConversationList />
         </div>
       </div>

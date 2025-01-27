@@ -50,6 +50,16 @@ export default function ConversationChat() {
     }
   }, [conversationId, loadMessages]);
 
+  // Add this effect to clear input when conversation changes
+  useEffect(() => {
+    setNewMessage('');
+    // Reset textarea height
+    const textarea = document.querySelector('textarea');
+    if (textarea) {
+      textarea.style.height = '40px';
+    }
+  }, [conversationId]);
+
   const handleSend = async () => {
     if (!newMessage.trim()) return;
 
@@ -131,7 +141,7 @@ export default function ConversationChat() {
                   className={`max-w-2xl p-4 rounded-xl ${
                     message.role === 'user'
                       ? 'bg-blue-600 text-white'
-                      : 'bg-gray-800 text-gray-100'
+                      : 'bg-zinc-800 text-zinc-100'
                   }`}
                 >
                   <p className="whitespace-pre-wrap">{message.content}</p>
@@ -162,7 +172,7 @@ export default function ConversationChat() {
             )}
             {messagesLoading && (
               <div className="flex justify-start">
-                <div className="max-w-2xl p-4 rounded-xl bg-gray-800 text-gray-100">
+                <div className="max-w-2xl p-4 rounded-xl bg-zinc-800 text-gray-100">
                   <div className="flex items-center gap-2">
                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-b-transparent border-gray-300"></div>
                     <span className="text-sm text-gray-300">Thinking...</span>
@@ -176,7 +186,7 @@ export default function ConversationChat() {
       </div>
 
       {/* Input Area */}
-      <div className="flex p-4 border-t border-gray-700 w-full items-center justify-center">
+      <div className="flex p-4 border-t border-zinc-700 w-full items-center justify-center">
         <div className="flex flex-col items-center justify-center w-full">
         <div className="flex gap-2 max-w-4xl w-full">
           <textarea
@@ -195,7 +205,7 @@ export default function ConversationChat() {
               }
             }}
             placeholder="Type your message..."
-            className="flex-1 bg-gray-800 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-[40px] max-h-[200px] overflow-y-auto"
+            className="flex-1 bg-zinc-800 text-gray-100 rounded-lg placeholder:text-gray-400 px-4 py-2 focus:outline-none focus:ring-1 focus:ring-blue-600 resize-none min-h-[40px] max-h-[200px] overflow-y-auto"
             disabled={messagesLoading}
             rows={1}
           />

@@ -56,7 +56,7 @@ function ProtectedRoute() {
   }
 
   return (
-    <div className="flex h-screen bg-gray-900 text-gray-100">
+    <div className="flex h-screen bg-zinc-900 text-gray-100">
       {user && !user.username && <UsernamePromptModal />}
       <Outlet />
     </div>

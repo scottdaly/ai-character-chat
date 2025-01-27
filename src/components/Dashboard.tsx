@@ -57,37 +57,38 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 flex flex-col h-full bg-zinc-900 overflow-y-auto dark-scrollbar">
       {/* Header */}
-      <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+      <div className="p-4 md:py-4 md:px-0 flex items-center justify-between w-full max-w-6xl mx-auto">
         <div className="flex items-center gap-4">
           <Link to="/" className="text-2xl font-bold hover:text-blue-400 transition-colors">
-            Nevermade
+            NeverMade
           </Link>
         </div>
         <button
           onClick={logout}
-          className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors cursor-pointer"
+          className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition-colors cursor-pointer"
         >
           Logout
         </button>
       </div>
 
       {/* Content */}
-      <div className="flex-1 p-4 bg-slate-900">
+      <div className="flex-1 p-4">
         <div className="max-w-6xl mx-auto">
           {/* Welcome Message */}
-          <div className="mb-8">
-            <p className="text-2xl text-gray-400">Welcome back, {user?.username}</p>
+          <div className="flex flex-col md:flex-row justify-between items-center mt-4 mb-4 md:mb-16">
+            <p className="text-4xl text-gray-100 text-center">Welcome back, {user?.username}</p>
+             {/* Create Character Button */}
+            <button
+              onClick={() => setShowCharacterForm(true)}
+              className="w-full cursor-pointer md:w-auto my-8 md:my-0 bg-blue-700 hover:bg-blue-600 text-white py-3 px-6 rounded-lg flex items-center justify-center gap-2"
+            >
+              <FiPlus size={20} /> Create New Character
+            </button>
           </div>
           
-          {/* Create Character Button */}
-          <button
-            onClick={() => setShowCharacterForm(true)}
-            className="w-full mb-8 bg-blue-600 hover:bg-blue-700 text-white py-3 px-6 rounded-lg flex items-center justify-center gap-2"
-          >
-            <FiPlus size={20} /> Create New Character
-          </button>
+         
 
           {/* Your Characters Section */}
           {characters.length > 0 && (
@@ -121,9 +122,18 @@ export default function Dashboard() {
                 <textarea
                   placeholder="Description"
                   value={newCharacter.description}
-                  onChange={(e) => setNewCharacter({ ...newCharacter, description: e.target.value })}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value.length <= 120) {
+                      setNewCharacter({ ...newCharacter, description: value });
+                    }
+                  }}
+                  maxLength={120}
                   className="w-full bg-gray-700 rounded-lg px-4 py-2 h-24 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+                <div className="text-sm text-gray-400 text-right">
+                  {newCharacter.description.length}/120 characters
+                </div>
                 
                 <select
                   value={newCharacter.model}

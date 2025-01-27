@@ -49,7 +49,7 @@ export default function ConversationList() {
   };
 
   return (
-    <div className="p-4">
+    <div className="p-4 ">
       <button
         onClick={handleNewConversation}
         className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg mb-4 flex items-center justify-center gap-2"
@@ -64,13 +64,13 @@ export default function ConversationList() {
             <Link
               key={convo.id}
               to={`/dashboard/characters/${characterId}/conversations/${convo.id}`}
-              className={`block p-3 rounded-lg transition-colors relative group
+              className={`block p-3 border rounded-lg transition-colors relative group
                 ${isSelected 
-                  ? 'bg-gray-600' 
-                  : 'bg-gray-700 hover:bg-gray-600'}`}
+                  ? 'bg-gray-800 border-gray-400' 
+                  : 'hover:bg-zinc-800 border-zinc-700'}`}
             >
               <h4 className="font-medium">{convo.title}</h4>
-              <p className="text-sm text-gray-400 line-clamp-2">
+              <p className="text-sm text-gray-300 line-clamp-2">
                 {convo.lastMessage || 'New conversation'}
               </p>
               <div className="flex items-center justify-between mt-2 text-xs text-gray-400">
@@ -79,7 +79,7 @@ export default function ConversationList() {
                 </span>
                 <button
                   onClick={(e) => handleDelete(e, convo.id)}
-                  className="p-1.5 rounded-lg cursor-pointer text-gray-400 hover:text-red-400 hover:bg-gray-800 md:opacity-0 md:group-hover:opacity-100 transition-all"
+                  className="p-1.5 rounded-lg cursor-pointer text-gray-400 hover:text-red-400 hover:bg-black/50 md:opacity-0 md:group-hover:opacity-100 transition-all"
                   title="Delete conversation"
                 >
                   <FiTrash2 />

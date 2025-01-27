@@ -53,12 +53,12 @@ export default function CharacterSettings({ character, onClose, onSave }: Charac
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-gray-800 p-6 rounded-xl w-full max-w-md space-y-4">
+      <div className="bg-zinc-800 p-6 rounded-xl w-full max-w-md space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold">Edit Character</h2>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+            className="p-2 hover:bg-zinc-700 rounded-lg transition-colors"
           >
             <FiX />
           </button>
@@ -67,40 +67,64 @@ export default function CharacterSettings({ character, onClose, onSave }: Charac
         {error && (
           <div className="text-red-500 text-sm">{error}</div>
         )}
-        
+        <div className='flex flex-col my-4 gap-1'>
+        <label htmlFor="name" className="text-zinc-400 text-sm font-semibold">Name</label>
         <input
           placeholder="Name"
           value={editedCharacter.name}
           onChange={(e) => setEditedCharacter({ ...editedCharacter, name: e.target.value })}
-          className="w-full bg-gray-700 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full bg-zinc-700 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
+        </div>
         
+        <div className='flex flex-col my-4 gap-1'>
+        <label htmlFor="description" className="text-zinc-400 text-sm font-semibold">Description</label>
         <textarea
           placeholder="Description"
           value={editedCharacter.description}
-          onChange={(e) => setEditedCharacter({ ...editedCharacter, description: e.target.value })}
-          className="w-full bg-gray-700 rounded-lg px-4 py-2 h-24 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          onChange={(e) => {
+            const value = e.target.value;
+            if (value.length <= 120) {
+              setEditedCharacter({ ...editedCharacter, description: value });
+            }
+          }}
+          maxLength={120}
+          className="w-full bg-zinc-700 rounded-lg px-4 py-2 h-24 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
+          <div className="text-sm text-gray-400 text-right">
+          {editedCharacter.description.length}/120 characters
+          </div>
+        </div>
         
+        <div className='flex flex-col my-4 gap-1'>
+        <label htmlFor="model" className="text-zinc-400 text-sm font-semibold">Model</label>
         <select
           value={editedCharacter.model}
           onChange={(e) => setEditedCharacter({ ...editedCharacter, model: e.target.value })}
-          className="w-full bg-gray-700 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full bg-zinc-700 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          <option value="gpt-4o-mini">GPT-4o Mini</option>
-          <option value="chatgpt-4o-latest">GPT-4o Latest</option>
-          <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
-          <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku</option>
+          <optgroup label="OpenAI">
+            <option value="chatgpt-4o-latest">GPT-4o Latest</option>
+            <option value="gpt-4o-mini">GPT-4o Mini</option>
+          </optgroup>
+          <optgroup label="Anthropic">
+            <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+            <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku</option>
+          </optgroup>
         </select>
+        </div>
         
+        <div className='flex flex-col my-4 gap-1'>
+        <label htmlFor="systemPrompt" className="text-zinc-400 text-sm font-semibold">System Prompt</label>
         <textarea
           placeholder="System Prompt"
           value={editedCharacter.systemPrompt}
           onChange={(e) => setEditedCharacter({ ...editedCharacter, systemPrompt: e.target.value })}
-          className="w-full bg-gray-700 rounded-lg px-4 py-2 h-32 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full bg-zinc-700 rounded-lg px-4 py-2 h-32 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
+        </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 my-6">
           <label className="relative inline-flex items-center cursor-pointer">
             <input
               type="checkbox"
@@ -116,7 +140,7 @@ export default function CharacterSettings({ character, onClose, onSave }: Charac
         <div className="flex gap-2 justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-lg bg-gray-600 hover:bg-gray-500"
+            className="px-4 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600"
           >
             Cancel
           </button>

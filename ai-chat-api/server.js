@@ -36,7 +36,12 @@ const User = sequelize.define('User', {
 
 const Character = sequelize.define('Character', {
     name: DataTypes.STRING,
-    description: DataTypes.TEXT,
+    description: {
+      type: DataTypes.TEXT,
+      validate: {
+        len: [0, 120] // Maximum 120 characters
+      }
+    },
     model: DataTypes.STRING,
     systemPrompt: DataTypes.TEXT,
     isPublic: {
@@ -527,7 +532,7 @@ app.post('/api/conversations/:conversationId/messages', authenticateToken, async
       if (conversation.title === 'New Conversation') {
         try {
           const titleResponse = await openai.chat.completions.create({
-            model: 'gpt-4',
+            model: 'gpt-4o-mini',
             messages: [
               { 
                 role: 'system', 
