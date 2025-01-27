@@ -26,6 +26,10 @@ export default function Explore() {
     loadCharacters();
   }, [apiFetch]);
 
+  // Separate official and public characters
+  const officialCharacters = characters.filter(char => char.User?.isOfficial);
+  const publicCharacters = characters.filter(char => !char.User?.isOfficial);
+
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -71,16 +75,35 @@ export default function Explore() {
       <main className="container mx-auto max-w-6xl px-4 py-8 overflow-y-auto">
         <h1 className="text-3xl font-bold mb-8">Explore Characters</h1>
         
-        <div className=" mx-auto">
-          {characters.length > 0 ? (
+        <div className="space-y-12">
+          {/* Official Characters Section */}
+          <section>
+            <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
+              <span className="text-blue-400">Official</span> Characters
+            </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {characters.map(character => (
+              {officialCharacters.map(character => (
                 <CharacterCard key={character.id} character={character} showMessageCount={true} />
               ))}
             </div>
-          ) : (
+          </section>
+
+          {/* Public Characters Section */}
+          {publicCharacters.length > 0 && (
+            <section>
+              <h2 className="text-2xl font-semibold mb-4">Community Characters</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {publicCharacters.map(character => (
+                  <CharacterCard key={character.id} character={character} showMessageCount={true} />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Show message if no characters found */}
+          {characters.length === 0 && (
             <div className="text-center text-gray-400 py-8">
-              <p className="text-xl mb-2">No public characters found</p>
+              <p className="text-xl mb-2">No characters found</p>
               <p>Sign in to create and share your own characters!</p>
             </div>
           )}

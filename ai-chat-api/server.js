@@ -245,19 +245,29 @@ app.get('/api/characters/featured', async (req, res) => {
 
 app.get('/api/characters/explore', authenticateToken, async (req, res) => {
   try {
-    // Get public characters created by other users
+    // Get both official characters and public characters from other users
     const characters = await Character.findAll({
       where: {
-        UserId: {
-          [Sequelize.Op.not]: req.user.id // Exclude current user's characters
-        },
-        isPublic: true // Only show public characters
+        [Sequelize.Op.or]: [
+          // Official characters
+          {
+            '$User.isOfficial$': true
+          },
+          // Public characters from other users
+          {
+            UserId: {
+              [Sequelize.Op.not]: req.user.id
+            },
+            isPublic: true
+          }
+        ]
       },
       include: [{
         model: User,
         attributes: ['username', 'displayName', 'isOfficial']
       }],
       order: [
+        [{ model: User, as: 'User' }, 'isOfficial', 'DESC'], // Show official characters first
         ['createdAt', 'DESC']
       ]
     });
