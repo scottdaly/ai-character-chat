@@ -10,7 +10,7 @@ import AuthSuccess from './components/AuthSuccess';
 import SetupUsername from './components/SetupUsername';
 import UsernamePromptModal from './components/UsernamePromptModal';
 import { useAuth } from './contexts/AuthContext';
-
+import Test from './components/Test';
 const router = createBrowserRouter([
   {
     path: '/',
@@ -20,6 +20,7 @@ const router = createBrowserRouter([
       { path: 'auth-success', element: <AuthSuccess /> },
       { path: 'setup-username', element: <SetupUsername /> },
       { path: 'explore', element: <Explore /> },
+      { path: 'test', element: <Test /> },
       {
         path: 'dashboard',
         element: <ProtectedRoute />,
