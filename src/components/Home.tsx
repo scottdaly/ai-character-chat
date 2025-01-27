@@ -71,10 +71,10 @@ export default function Home() {
       <main className="container mx-auto px-4 py-8">
         <section className="mt-8 mb-24 md:my-32 text-center px-12 md:px-0 mx-auto max-w-4xl">
           
-          <p className="mx-auto mb-6 text-6xl text-white">
-            Chat with custom AI personalities
+          <p className="mx-auto mb-6 text-5xl md:text-6xl text-white">
+            Chat with Custom AI Personalities
           </p>
-          <p className="mx-auto mb-12 max-w-4xl text-3xl text-zinc-400">
+          <p className="mx-auto mb-12 max-w-4xl text-2xl md:text-3xl text-zinc-400">
             Powered by your choice of state-of-the-art language models
           </p>
           {user ? (
