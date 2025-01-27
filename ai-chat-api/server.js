@@ -11,8 +11,8 @@ require('dotenv').config();
 
 const app = express();
 
-console.log('CLIENT_ID:', process.env.CLIENT_ID);
-console.log('CLIENT_SECRET:', process.env.CLIENT_SECRET);
+console.log('CLIENT_ID:', process.env.GOOGLE_CLIENT_ID);
+console.log('CLIENT_SECRET:', process.env.GOOGLE_CLIENT_SECRET);
 
 // Database Configuration
 const sequelize = new Sequelize({
