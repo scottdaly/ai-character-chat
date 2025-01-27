@@ -302,28 +302,37 @@ const anthropic = new Anthropic({
 });
 
 // Auth Routes
-app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+app.get('/auth/google', (req, res, next) => {
+  console.log('Auth route hit before passport');
+  passport.authenticate('google', { 
+    scope: ['profile', 'email'] 
+  })(req, res, next);
+});
 
-app.get('/auth/google/callback',
-  passport.authenticate('google', { session: false }),
-  (req, res) => {
+app.get('/auth/google/callback', (req, res, next) => {
+  console.log('Callback route hit before passport');
+  passport.authenticate('google', { session: false }, (err, user) => {
+    console.log('Inside passport callback', { err, user });
+    if (err) {
+      console.error('Passport error:', err);
+      return next(err);
+    }
+    if (!user) {
+      console.log('No user found');
+      return res.redirect('/login');
+    }
     const token = jwt.sign(
-      { userId: req.user.id },
+      { userId: user.id },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
-
-    console.log('got token', token)
-    console.log('Environment:', process.env.NODE_ENV);
-    console.log('Frontend URL:', process.env.FRONTEND_URL);
-    // Redirect to username setup if username is not set
-    const redirectUrl = !req.user.username ? 
+    const redirectUrl = !user.username ? 
       `${process.env.FRONTEND_URL}/setup-username?token=${token}` :
       `${process.env.FRONTEND_URL}/auth-success?token=${token}`;
+    console.log('Redirecting to:', redirectUrl);
     res.redirect(redirectUrl);
-  }
-);
-
+  })(req, res, next);
+});
 app.get('/api/me', authenticateToken, async (req, res) => {
   res.json(req.user);
 });
