@@ -10,7 +10,7 @@ interface CharacterSettingsProps {
 }
 
 export default function CharacterSettings({ character, onClose, onSave }: CharacterSettingsProps) {
-  const { apiFetch } = useAuth();
+  const { apiFetch, user } = useAuth();
   const [editedCharacter, setEditedCharacter] = useState({
     name: character.name,
     description: character.description,
@@ -37,10 +37,15 @@ export default function CharacterSettings({ character, onClose, onSave }: Charac
         return;
       }
       
-      await apiFetch(`/api/characters/${character.id}`, {
-        method: 'PUT',
-        body: JSON.stringify(editedCharacter)
-      });
+      await apiFetch(
+        user?.isAdmin 
+          ? `/api/admin/characters/${character.id}`
+          : `/api/characters/${character.id}`, 
+        {
+          method: 'PUT',
+          body: JSON.stringify(editedCharacter)
+        }
+      );
 
       onSave();
     } catch (err) {

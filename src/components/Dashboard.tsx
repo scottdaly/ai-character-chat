@@ -1,15 +1,28 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { FiPlus } from 'react-icons/fi';
 import { useAuth } from '../contexts/AuthContext';
 import { useCharacters } from '../api/characters';
 import CharacterCard from './CharacterCard';
 import { Character } from '../types';
+import Navbar from './Navbar';
+
+
 
 export default function Dashboard() {
-  const { user, logout } = useAuth();
+  const { user, logout, apiFetch } = useAuth();
+  const navigate = useNavigate();
   const { characters, createCharacter, isLoading, error } = useCharacters();
   const [showCharacterForm, setShowCharacterForm] = useState(false);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<{
+    status: string;
+    tier: string;
+    currentPeriodEnd: string | null;
+  }>({ status: 'free', tier: 'free', currentPeriodEnd: null });
+
+
+  
+
   const [newCharacter, setNewCharacter] = useState<Omit<Character, 'id'>>({
     name: '',
     description: '',
@@ -21,8 +34,27 @@ export default function Dashboard() {
     messageCount: 0
   });
 
+  useEffect(() => {
+    const fetchSubscriptionStatus = async () => {
+      try {
+        const status = await apiFetch('/api/subscription-status');
+        setSubscriptionStatus(status);
+      } catch (error) {
+        console.error('Failed to fetch subscription status:', error);
+      }
+    };
+
+    fetchSubscriptionStatus();
+  }, [apiFetch]);
+
   const handleCreateCharacter = async () => {
     try {
+      // Check character limit for free users
+      if (subscriptionStatus.tier === 'free' && characters.length >= 3) {
+        navigate('/plans');
+        return;
+      }
+
       await createCharacter(newCharacter);
       setShowCharacterForm(false);
       setNewCharacter({
@@ -59,19 +91,7 @@ export default function Dashboard() {
   return (
     <div className="flex-1 flex flex-col h-full bg-zinc-900 overflow-y-auto dark-scrollbar">
       {/* Header */}
-      <div className="p-4 md:py-4 md:px-0 flex items-center justify-between w-full max-w-6xl mx-auto">
-        <div className="flex items-center gap-4">
-          <Link to="/" className="text-2xl font-bold hover:text-blue-400 transition-colors">
-            NeverMade
-          </Link>
-        </div>
-        <button
-          onClick={logout}
-          className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition-colors cursor-pointer"
-        >
-          Logout
-        </button>
-      </div>
+      <Navbar subscriptionTier={subscriptionStatus.tier} />
 
       {/* Content */}
       <div className="flex-1 p-4">
@@ -79,16 +99,30 @@ export default function Dashboard() {
           {/* Welcome Message */}
           <div className="flex flex-col md:flex-row justify-between items-center mt-4 mb-4 md:mb-16">
             <p className="text-4xl text-gray-100 text-center">Welcome back, {user?.username}</p>
-             {/* Create Character Button */}
+            {/* Create Character Button */}
             <button
               onClick={() => setShowCharacterForm(true)}
-              className="w-full cursor-pointer md:w-auto my-8 md:my-0 bg-blue-700 hover:bg-blue-600 text-white py-3 px-6 rounded-lg flex items-center justify-center gap-2"
+              className="w-full font-semibold cursor-pointer md:w-auto my-8 md:my-0 bg-white hover:bg-zinc-100 text-black py-3 px-6 rounded-lg flex items-center justify-center gap-2"
             >
               <FiPlus size={20} /> Create New Character
             </button>
           </div>
-          
-         
+
+          {/* Subscription Status */}
+          {subscriptionStatus.tier === 'free' && characters.length >= 3 && (
+            <div className="flex flex-col md:flex-row md:justify-between mb-8 p-4 rounded-lg bg-blue-500/20 text-blue-300">
+              <div className="flex flex-col mb-4 md:mb-0 gap-2">
+              <p className="text-2xl">You've reached the character limit for free accounts.</p>
+              <p className="text-md">Want to chat with more characters? Upgrade to a paid plan to continue creating characters.</p>
+              </div>
+              <Link
+                to="/plans"
+                className="text-white bg-blue-600 my-auto hover:bg-blue-500 px-4 py-2 rounded-lg inline-block"
+              >
+                Upgrade to Pro
+              </Link>
+            </div>
+          )}
 
           {/* Your Characters Section */}
           {characters.length > 0 ? (
@@ -109,9 +143,8 @@ export default function Dashboard() {
               <p className="text-gray-400 text-center text-xl">You don't have any characters yet</p>
               <p className="text-gray-400 text-center text-xl">Create one to get started or explore public characters</p>
               <div className="flex items-center gap-2">
-              <button onClick={() => setShowCharacterForm(true)} className="bg-blue-700 hover:bg-blue-600 text-white py-3 px-6 rounded-lg flex items-center justify-center gap-2 mt-2 cursor-pointer"><FiPlus size={20} /> Create Character</button>
+                <button onClick={() => setShowCharacterForm(true)} className="bg-blue-700 hover:bg-blue-600 text-white py-3 px-6 rounded-lg flex items-center justify-center gap-2 mt-2 cursor-pointer"><FiPlus size={20} /> Create Character</button>
                 <Link to="/explore" className="border border-zinc-800 hover:bg-zinc-800 text-white py-3 px-6 rounded-lg flex items-center justify-center gap-2 mt-2 cursor-pointer">Explore</Link>
-                
               </div>
             </div>
           )}
@@ -151,13 +184,17 @@ export default function Dashboard() {
                   className="w-full bg-gray-700 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <optgroup label="OpenAI">
-                    <option value="chatgpt-4o-latest">GPT-4o Latest</option>
+                    {subscriptionStatus.tier === 'pro' && (
+                      <option value="chatgpt-4o-latest">GPT-4o Latest</option>
+                    )}
                     <option value="gpt-4o-mini">GPT-4o Mini</option>
                   </optgroup>
-                  <optgroup label="Anthropic">
-                    <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
-                    <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku</option>
-                  </optgroup>
+                  {subscriptionStatus.tier === 'pro' && (
+                    <optgroup label="Anthropic">
+                      <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+                      <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku</option>
+                    </optgroup>
+                  )}
                 </select>
                 
                 <textarea

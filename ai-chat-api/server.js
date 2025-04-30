@@ -1,3 +1,11 @@
+// Load environment variables first
+require('dotenv').config();
+
+// Check if Stripe key is available
+if (!process.env.STRIPE_SECRET_KEY) {
+  throw new Error('STRIPE_SECRET_KEY is missing in environment variables');
+}
+
 const express = require('express');
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
@@ -7,7 +15,10 @@ const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const { OpenAI } = require('openai');
 const Anthropic = require('@anthropic-ai/sdk');
-require('dotenv').config();
+const bcrypt = require('bcrypt');
+
+// Initialize Stripe with the secret key from environment variables
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 
@@ -26,11 +37,34 @@ const User = sequelize.define('User', {
   username: { 
     type: DataTypes.STRING, 
     unique: true,
-    allowNull: true // Initially null until user sets it
+    allowNull: true
   },
   isOfficial: {
     type: DataTypes.BOOLEAN,
     defaultValue: false
+  },
+  isAdmin: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  stripeCustomerId: {
+    type: DataTypes.STRING,
+    unique: true,
+    allowNull: true
+  },
+  subscriptionStatus: {
+    type: DataTypes.STRING,
+    defaultValue: 'free',
+    allowNull: false
+  },
+  subscriptionTier: {
+    type: DataTypes.STRING,
+    defaultValue: 'free',
+    allowNull: false
+  },
+  subscriptionEndsAt: {
+    type: DataTypes.DATE,
+    allowNull: true
   }
 });
 
@@ -88,35 +122,90 @@ const syncOptions = process.env.NODE_ENV === 'development' ?
   { alter: true } : 
   {};
 
+// Initialize Stripe portal configuration
+const initializeStripePortal = async () => {
+  try {
+    // Create or update the portal configuration
+    const configuration = await stripe.billingPortal.configurations.create({
+      business_profile: {
+        headline: 'Manage your subscription',
+      },
+      features: {
+        subscription_cancel: {
+          enabled: true,
+          mode: 'at_period_end',
+          proration_behavior: 'none'
+        },
+        subscription_pause: {
+          enabled: false
+        },
+        payment_method_update: {
+          enabled: true
+        },
+        customer_update: {
+          enabled: true,
+          allowed_updates: ['email', 'address']
+        },
+        invoice_history: {
+          enabled: true
+        }
+      },
+    });
+    
+    console.log('Portal configuration created:', configuration.id);
+    return configuration.id;
+  } catch (error) {
+    console.error('Failed to create portal configuration:', error);
+    throw error;
+  }
+};
+
 // Initialize Database
 (async () => {
   try {
-    // First sync without altering existing tables
+    // First, sync without altering existing tables
     await sequelize.sync();
+    await initializeStripePortal();
 
-    // Check if username column exists
-    const hasUsernameColumn = await sequelize.query(
-      "SELECT name FROM pragma_table_info('Users') WHERE name = 'username'",
+    // Check if new columns need to be added
+    const hasStripeColumns = await sequelize.query(
+      "SELECT name FROM pragma_table_info('Users') WHERE name IN ('stripeCustomerId', 'subscriptionStatus', 'subscriptionTier', 'subscriptionEndsAt')",
       { type: Sequelize.QueryTypes.SELECT }
     );
 
-    if (hasUsernameColumn.length === 0) {
-      // Add username column without UNIQUE constraint first
-      await sequelize.query('ALTER TABLE Users ADD COLUMN username VARCHAR(255)');
-      
-      // Then add the UNIQUE constraint
-      await sequelize.query('CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique ON Users(username) WHERE username IS NOT NULL');
-    }
+    if (hasStripeColumns.length < 4) {
+      // Add missing columns one by one
+      const columnsToAdd = [
+        {
+          name: 'stripeCustomerId',
+          type: 'VARCHAR(255)',
+          constraint: 'UNIQUE'
+        },
+        {
+          name: 'subscriptionStatus',
+          type: 'VARCHAR(255)',
+          default: "'free'"
+        },
+        {
+          name: 'subscriptionTier',
+          type: 'VARCHAR(255)',
+          default: "'free'"
+        },
+        {
+          name: 'subscriptionEndsAt',
+          type: 'DATETIME',
+          constraint: 'NULL'
+        }
+      ];
 
-    // Check if messageCount column exists in Characters table
-    const hasMessageCountColumn = await sequelize.query(
-      "SELECT name FROM pragma_table_info('Characters') WHERE name = 'messageCount'",
-      { type: Sequelize.QueryTypes.SELECT }
-    );
-
-    if (hasMessageCountColumn.length === 0) {
-      // Add messageCount column with default value 0
-      await sequelize.query('ALTER TABLE Characters ADD COLUMN messageCount INTEGER DEFAULT 0');
+      for (const column of columnsToAdd) {
+        const exists = hasStripeColumns.some(col => col.name === column.name);
+        if (!exists) {
+          await sequelize.query(
+            `ALTER TABLE Users ADD COLUMN ${column.name} ${column.type} ${column.constraint || ''} ${column.default ? `DEFAULT ${column.default}` : ''}`
+          );
+        }
+      }
     }
 
     // Create the official Nevermade user if it doesn't exist
@@ -126,6 +215,7 @@ const syncOptions = process.env.NODE_ENV === 'development' ?
         displayName: 'Nevermade',
         email: 'official@nevermade.ai',
         isOfficial: true,
+        isAdmin: true,
         googleId: 'nevermade-official'
       }
     });
@@ -165,9 +255,10 @@ const syncOptions = process.env.NODE_ENV === 'development' ?
       });
     }
 
-    console.log('Database synchronized successfully');
+    console.log('Database and Stripe portal initialized successfully');
   } catch (error) {
-    console.error('Database sync failed:', error);
+    console.error('Initialization failed:', error);
+    process.exit(1);
   }
 })();
 
@@ -202,21 +293,30 @@ app.use((req, res, next) => {
 const authenticateToken = async (req, res, next) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
-    if (!token) {
-      return res.status(401).json({ error: 'No token provided' });
-    }
+    if (!token) return res.status(401).json({ error: 'No token provided' });
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findByPk(decoded.userId);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+    
+    // Handle admin login
+    if (decoded.isAdmin) {
+      req.user = {
+        id: 'admin',
+        username: decoded.adminUsername,
+        isAdmin: true,
+        displayName: 'Administrator'
+      };
+      return next();
     }
+
+    // Existing user lookup
+    const user = await User.findByPk(decoded.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
     
     req.user = user;
     next();
   } catch (err) {
     console.error('Token verification error:', err);
-    return res.status(401).json({ error: 'Invalid token' });
+    res.status(401).json({ error: 'Invalid token' });
   }
 };
 
@@ -284,8 +384,8 @@ passport.use(new GoogleStrategy({
   clientID: process.env.GOOGLE_CLIENT_ID,
   clientSecret: process.env.GOOGLE_CLIENT_SECRET,
   callbackURL: process.env.NODE_ENV === 'production'
-  ? 'https://nevermade.co/auth/google/callback'
-  : `http://localhost:${process.env.PORT}/auth/google/callback`
+    ? 'https://nevermade.co/auth/google/callback'
+    : `http://localhost:${process.env.PORT}/auth/google/callback`
 }, async (accessToken, refreshToken, profile, done) => {
   try {
     const [user] = await User.findOrCreate({
@@ -312,37 +412,35 @@ const anthropic = new Anthropic({
 });
 
 // Auth Routes
-app.get('/auth/google', (req, res, next) => {
-  console.log('Auth route hit before passport');
-  passport.authenticate('google', { 
-    scope: ['profile', 'email'] 
-  })(req, res, next);
-});
+app.get('/auth/google', passport.authenticate('google', { 
+  scope: ['profile', 'email'] 
+}));
 
 app.get('/auth/google/callback', (req, res, next) => {
-  console.log('Callback route hit before passport');
-  passport.authenticate('google', { session: false }, (err, user) => {
-    console.log('Inside passport callback', { err, user });
+  passport.authenticate('google', { session: false }, async (err, user) => {
     if (err) {
       console.error('Passport error:', err);
-      return next(err);
+      return res.redirect(`${process.env.FRONTEND_URL}/login?error=auth_failed`);
     }
     if (!user) {
-      console.log('No user found');
-      return res.redirect('/login');
+      return res.redirect(`${process.env.FRONTEND_URL}/login?error=no_user`);
     }
+
     const token = jwt.sign(
       { userId: user.id },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
+
+    // Redirect based on whether username is set
     const redirectUrl = !user.username ? 
       `${process.env.FRONTEND_URL}/setup-username?token=${token}` :
       `${process.env.FRONTEND_URL}/auth-success?token=${token}`;
-    console.log('Redirecting to:', redirectUrl);
+
     res.redirect(redirectUrl);
   })(req, res, next);
 });
+
 app.get('/api/me', authenticateToken, async (req, res) => {
   res.json(req.user);
 });
@@ -797,6 +895,234 @@ app.get('/api/conversations/:conversationId', authenticateToken, async (req, res
   } catch (err) {
     console.error('Failed to load conversation:', err);
     res.status(500).json({ error: 'Failed to load conversation' });
+  }
+});
+
+// Add admin routes
+app.get('/api/admin/characters', authenticateToken, async (req, res) => {
+  if (!req.user.isAdmin) return res.status(403).json({ error: 'Unauthorized' });
+  
+  try {
+    const characters = await Character.findAll({
+      include: [{
+        model: User,
+        where: { isOfficial: true },
+        attributes: ['username', 'displayName']
+      }]
+    });
+    res.json(characters);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load characters' });
+  }
+});
+
+app.put('/api/admin/characters/:id', authenticateToken, async (req, res) => {
+  if (!req.user.isAdmin) return res.status(403).json({ error: 'Unauthorized' });
+
+  try {
+    const character = await Character.findByPk(req.params.id, {
+      include: [User]
+    });
+    
+    if (!character) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    // Add validation for required fields
+    if (!req.body.name?.trim()) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+
+    if (!req.body.systemPrompt?.trim()) {
+      return res.status(400).json({ error: 'System prompt is required' });
+    }
+
+    // Validate model
+    const allowedModels = [
+      'chatgpt-4o-latest', 
+      'gpt-4o-mini',
+      'claude-3-5-sonnet-20241022',
+      'claude-3-5-haiku-20241022'
+    ];
+    if (!allowedModels.includes(req.body.model)) {
+      return res.status(400).json({ error: 'Invalid model selected' });
+    }
+
+    // Update allowed fields
+    const updatedCharacter = await character.update({
+      name: req.body.name.trim(),
+      description: req.body.description?.trim() || '',
+      model: req.body.model,
+      systemPrompt: req.body.systemPrompt.trim(),
+      isPublic: Boolean(req.body.isPublic)
+    });
+
+    // Return the updated character with user info
+    const characterWithUser = await Character.findByPk(updatedCharacter.id, {
+      include: [{
+        model: User,
+        attributes: ['username', 'displayName', 'isOfficial']
+      }]
+    });
+
+    res.json(characterWithUser);
+  } catch (err) {
+    console.error('Admin character update error:', err);
+    res.status(500).json({ error: 'Failed to update character' });
+  }
+});
+
+// Add new admin login route
+app.post('/auth/admin-login', async (req, res) => {
+  const { username, password } = req.body;
+  console.log(username, password);
+  let hash = bcrypt.hashSync(process.env.ADMIN_PASSWORD, 10)
+  console.log(hash);
+  if (username !== process.env.ADMIN_USERNAME || 
+      !bcrypt.compareSync(password, process.env.ADMIN_PASSWORD_HASH)) {
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
+
+  const token = jwt.sign(
+    { 
+      isAdmin: true,
+      adminUsername: username 
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: '1h' }
+  );
+
+  res.json({ token });
+});
+
+// Add Stripe webhook endpoint (before other routes)
+app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    console.error('Webhook Error:', err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  // Handle the event
+  switch (event.type) {
+    case 'customer.subscription.created':
+    case 'customer.subscription.updated':
+      const subscription = event.data.object;
+      const user = await User.findOne({ where: { stripeCustomerId: subscription.customer } });
+      if (user) {
+        await user.update({
+          subscriptionStatus: subscription.status,
+          subscriptionTier: subscription.items.data[0].price.nickname || 'pro',
+          subscriptionEndsAt: new Date(subscription.current_period_end * 1000)
+        });
+      }
+      break;
+    case 'customer.subscription.deleted':
+      const canceledSubscription = event.data.object;
+      const canceledUser = await User.findOne({ where: { stripeCustomerId: canceledSubscription.customer } });
+      if (canceledUser) {
+        await canceledUser.update({
+          subscriptionStatus: 'free',
+          subscriptionTier: 'free',
+          subscriptionEndsAt: null
+        });
+      }
+      break;
+  }
+
+  res.json({received: true});
+});
+
+// Add subscription endpoints
+app.post('/api/create-subscription', authenticateToken, async (req, res) => {
+  try {
+    const { priceId } = req.body;
+    
+    // Get or create Stripe customer
+    if (!req.user.stripeCustomerId) {
+      const customer = await stripe.customers.create({
+        email: req.user.email,
+        metadata: {
+          userId: req.user.id
+        }
+      });
+      await req.user.update({ stripeCustomerId: customer.id });
+    }
+
+    // Create Checkout Session
+    const session = await stripe.checkout.sessions.create({
+      customer: req.user.stripeCustomerId,
+      line_items: [
+        {
+          price: priceId,
+          quantity: 1,
+        },
+      ],
+      mode: 'subscription',
+      success_url: `${process.env.FRONTEND_URL}/plans?success=true&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.FRONTEND_URL}/plans?canceled=true`,
+      allow_promotion_codes: true,
+      billing_address_collection: 'auto',
+      payment_method_types: ['card'],
+    });
+
+    res.json({ url: session.url });
+  } catch (error) {
+    console.error('Checkout session creation failed:', error);
+    res.status(500).json({ error: 'Failed to create checkout session: ' + error.message });
+  }
+});
+
+app.get('/api/subscription-status', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.stripeCustomerId) {
+      const subscriptions = await stripe.subscriptions.list({
+        customer: req.user.stripeCustomerId,
+        status: 'active',
+        limit: 1
+      });
+      
+      if (subscriptions.data.length > 0) {
+        const subscription = subscriptions.data[0];
+        res.json({
+          status: subscription.status,
+          tier: subscription.items.data[0].price.nickname || 'pro',
+          currentPeriodEnd: new Date(subscription.current_period_end * 1000)
+        });
+        return;
+      }
+    }
+    
+    res.json({
+      status: 'free',
+      tier: 'free',
+      currentPeriodEnd: null
+    });
+  } catch (error) {
+    console.error('Failed to fetch subscription status:', error);
+    res.status(500).json({ error: 'Failed to fetch subscription status' });
+  }
+});
+
+app.post('/api/create-portal-session', authenticateToken, async (req, res) => {
+  try {
+    if (!req.user.stripeCustomerId) {
+      throw new Error('No Stripe customer ID found');
+    }
+
+    const portalSession = await stripe.billingPortal.sessions.create({
+      customer: req.user.stripeCustomerId,
+      return_url: `${process.env.FRONTEND_URL}/plans`
+    });
+
+    res.json({ url: portalSession.url });
+  } catch (error) {
+    console.error('Failed to create portal session:', error);
+    res.status(500).json({ error: 'Failed to create portal session: ' + error.message });
   }
 });
 

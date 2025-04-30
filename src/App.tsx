@@ -11,6 +11,10 @@ import SetupUsername from './components/SetupUsername';
 import UsernamePromptModal from './components/UsernamePromptModal';
 import { useAuth } from './contexts/AuthContext';
 import Test from './components/Test';
+import Admin from './components/Admin';
+import AdminLogin from './components/AdminLogin';
+import SubscriptionPlans from './components/SubscriptionPlans';
+
 const router = createBrowserRouter([
   {
     path: '/',
@@ -35,6 +39,24 @@ const router = createBrowserRouter([
             ]
           }
         ]
+      },
+      {
+        path: 'plans',
+        element: <ProtectedRoute />,
+        children: [
+          { index: true, element: <SubscriptionPlans /> }
+        ]
+      },
+      {
+        path: 'admin',
+        element: <ProtectedAdminRoute />,
+        children: [
+          { index: true, element: <Admin /> }
+        ]
+      },
+      {
+        path: 'admin-login',
+        element: <AdminLogin />
       }
     ]
   }
@@ -62,6 +84,17 @@ function ProtectedRoute() {
       <Outlet />
     </div>
   );
+}
+
+function ProtectedAdminRoute() {
+  const { user } = useAuth();
+
+  if (!user?.isAdmin) {
+    window.location.href = '/admin-login';
+    return null;
+  }
+
+  return <Outlet />;
 }
 
 export default function App() {

@@ -5,6 +5,7 @@ interface User {
   displayName: string;
   email: string;
   username: string | null;
+  isAdmin: boolean;
 }
 
 interface AuthContextType {
@@ -80,7 +81,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           id: userData.id,
           displayName: userData.displayName,
           email: userData.email,
-          username: userData.username
+          username: userData.username,
+          isAdmin: userData.isAdmin
         });
       } catch (error) {
         console.error('Auth check failed:', error);
