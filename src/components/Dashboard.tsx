@@ -1,16 +1,14 @@
-import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { FiPlus } from 'react-icons/fi';
-import { useAuth } from '../contexts/AuthContext';
-import { useCharacters } from '../api/characters';
-import CharacterCard from './CharacterCard';
-import { Character } from '../types';
-import Navbar from './Navbar';
-
-
+import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { FiPlus } from "react-icons/fi";
+import { useAuth } from "../contexts/AuthContext";
+import { useCharacters } from "../api/characters";
+import CharacterCard from "./CharacterCard";
+import { Character } from "../types";
+import Navbar from "./Navbar";
 
 export default function Dashboard() {
-  const { user, logout, apiFetch } = useAuth();
+  const { user, apiFetch } = useAuth();
   const navigate = useNavigate();
   const { characters, createCharacter, isLoading, error } = useCharacters();
   const [showCharacterForm, setShowCharacterForm] = useState(false);
@@ -18,29 +16,26 @@ export default function Dashboard() {
     status: string;
     tier: string;
     currentPeriodEnd: string | null;
-  }>({ status: 'free', tier: 'free', currentPeriodEnd: null });
+  }>({ status: "free", tier: "free", currentPeriodEnd: null });
 
-
-  
-
-  const [newCharacter, setNewCharacter] = useState<Omit<Character, 'id'>>({
-    name: '',
-    description: '',
-    model: 'gpt-4o-mini',
-    systemPrompt: '',
+  const [newCharacter, setNewCharacter] = useState<Omit<Character, "id">>({
+    name: "",
+    description: "",
+    model: "gpt-4o-mini",
+    systemPrompt: "",
     createdAt: new Date(),
     UserId: user?.id ? Number(user.id) : 0,
     isPublic: false,
-    messageCount: 0
+    messageCount: 0,
   });
 
   useEffect(() => {
     const fetchSubscriptionStatus = async () => {
       try {
-        const status = await apiFetch('/api/subscription-status');
+        const status = await apiFetch("/api/subscription-status");
         setSubscriptionStatus(status);
       } catch (error) {
-        console.error('Failed to fetch subscription status:', error);
+        console.error("Failed to fetch subscription status:", error);
       }
     };
 
@@ -50,25 +45,25 @@ export default function Dashboard() {
   const handleCreateCharacter = async () => {
     try {
       // Check character limit for free users
-      if (subscriptionStatus.tier === 'free' && characters.length >= 3) {
-        navigate('/plans');
+      if (subscriptionStatus.tier === "free" && characters.length >= 3) {
+        navigate("/plans");
         return;
       }
 
       await createCharacter(newCharacter);
       setShowCharacterForm(false);
       setNewCharacter({
-        name: '',
-        description: '',
-        model: 'gpt-4o-mini',
-        systemPrompt: '',
+        name: "",
+        description: "",
+        model: "gpt-4o-mini",
+        systemPrompt: "",
         createdAt: new Date(),
         UserId: user?.id ? Number(user.id) : 0,
         isPublic: false,
-        messageCount: 0
+        messageCount: 0,
       });
     } catch (error) {
-      console.error('Failed to create character:', error);
+      console.error("Failed to create character:", error);
     }
   };
 
@@ -95,43 +90,52 @@ export default function Dashboard() {
 
       {/* Content */}
       <div className="flex-1 p-4">
-        <div className="max-w-6xl mx-auto">
+        <div className="max-w-6xl mx-auto flex flex-col gap-8">
           {/* Welcome Message */}
-          <div className="flex flex-col md:flex-row justify-between items-center mt-4 mb-4 md:mb-16">
-            <p className="text-4xl text-gray-100 text-center">Welcome back, {user?.username}</p>
+          <div className="flex flex-col md:flex-row justify-between items-center mt-4">
+            <p className="text-4xl text-gray-100 text-center">
+              Welcome back, {user?.username}
+            </p>
             {/* Create Character Button */}
             <button
               onClick={() => setShowCharacterForm(true)}
-              className="w-full font-semibold cursor-pointer md:w-auto my-8 md:my-0 bg-white hover:bg-zinc-100 text-black py-3 px-6 rounded-lg flex items-center justify-center gap-2"
+              className="w-full font-semibold cursor-pointer md:w-auto my-8 md:my-0 bg-transparent from-transparent to-transparent border border-zinc-700 hover:bg-gradient-to-bl hover:from-zinc-800 hover:to-zinc-700 hover:scale-102 py-3 px-6 rounded-lg flex items-center justify-center gap-2 transition-all duration-300 ease-in-out"
             >
               <FiPlus size={20} /> Create New Character
             </button>
           </div>
 
           {/* Subscription Status */}
-          {subscriptionStatus.tier === 'free' && characters.length >= 3 && (
-            <div className="flex flex-col md:flex-row md:justify-between mb-8 p-4 rounded-lg bg-blue-500/20 text-blue-300">
-              <div className="flex flex-col mb-4 md:mb-0 gap-2">
-              <p className="text-2xl">You've reached the character limit for free accounts.</p>
-              <p className="text-md">Want to chat with more characters? Upgrade to a paid plan to continue creating characters.</p>
+          {subscriptionStatus.tier === "free" && characters.length >= 3 && (
+            <div className="bg-gradient-to-bl from-cyan-800 via-cyan-900/50 to-cyan-700 px-[1px] py-[1px] rounded-lg">
+              <div className="bg-zinc-900 rounded-lg">
+                <div className="flex flex-col md:flex-row md:justify-between p-4 rounded-lg bg-gradient-to-tr from-cyan-700/30 via-cyan-900/20 to-cyan-900/40 text-sky-200/80">
+                  <div className="flex flex-col mb-4 md:mb-0 gap-2">
+                    <p className="text-2xl leading-[1.25rem] text-zinc-100">
+                      You've reached the character limit for free accounts
+                    </p>
+                    <p className="text-md">
+                      Want to chat with more characters? Upgrade to create more
+                    </p>
+                  </div>
+                  <Link
+                    to="/plans"
+                    className="text-white bg-gradient-to-bl from-cyan-800 to-cyan-900 my-auto hover:opacity-95 px-4 py-2 rounded-lg inline-block"
+                  >
+                    Upgrade to Pro
+                  </Link>
+                </div>
               </div>
-              <Link
-                to="/plans"
-                className="text-white bg-blue-600 my-auto hover:bg-blue-500 px-4 py-2 rounded-lg inline-block"
-              >
-                Upgrade to Pro
-              </Link>
             </div>
           )}
 
           {/* Your Characters Section */}
           {characters.length > 0 ? (
             <div className="mb-8">
-              <h2 className="text-xl font-semibold mb-4">Your Characters</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {characters.map(character => (
-                  <CharacterCard 
-                    key={character.id} 
+                {characters.map((character) => (
+                  <CharacterCard
+                    key={character.id}
                     character={character}
                     showPublicStatus={character.UserId === Number(user?.id)}
                   />
@@ -140,11 +144,25 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center gap-2">
-              <p className="text-gray-400 text-center text-xl">You don't have any characters yet</p>
-              <p className="text-gray-400 text-center text-xl">Create one to get started or explore public characters</p>
+              <p className="text-gray-400 text-center text-xl">
+                You don't have any characters yet
+              </p>
+              <p className="text-gray-400 text-center text-xl">
+                Create one to get started or explore public characters
+              </p>
               <div className="flex items-center gap-2">
-                <button onClick={() => setShowCharacterForm(true)} className="bg-blue-700 hover:bg-blue-600 text-white py-3 px-6 rounded-lg flex items-center justify-center gap-2 mt-2 cursor-pointer"><FiPlus size={20} /> Create Character</button>
-                <Link to="/explore" className="border border-zinc-800 hover:bg-zinc-800 text-white py-3 px-6 rounded-lg flex items-center justify-center gap-2 mt-2 cursor-pointer">Explore</Link>
+                <button
+                  onClick={() => setShowCharacterForm(true)}
+                  className="bg-blue-700 hover:bg-blue-600 text-white py-3 px-6 rounded-lg flex items-center justify-center gap-2 mt-2 cursor-pointer"
+                >
+                  <FiPlus size={20} /> Create Character
+                </button>
+                <Link
+                  to="/explore"
+                  className="border border-zinc-800 hover:bg-zinc-800 text-white py-3 px-6 rounded-lg flex items-center justify-center gap-2 mt-2 cursor-pointer"
+                >
+                  Explore
+                </Link>
               </div>
             </div>
           )}
@@ -154,14 +172,16 @@ export default function Dashboard() {
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4">
               <div className="bg-gray-800 p-6 rounded-xl w-full max-w-md space-y-4">
                 <h2 className="text-xl font-bold">Create New Character</h2>
-                
+
                 <input
                   placeholder="Name"
                   value={newCharacter.name}
-                  onChange={(e) => setNewCharacter({ ...newCharacter, name: e.target.value })}
+                  onChange={(e) =>
+                    setNewCharacter({ ...newCharacter, name: e.target.value })
+                  }
                   className="w-full bg-gray-700 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                
+
                 <textarea
                   placeholder="Description"
                   value={newCharacter.description}
@@ -177,30 +197,41 @@ export default function Dashboard() {
                 <div className="text-sm text-gray-400 text-right">
                   {newCharacter.description.length}/120 characters
                 </div>
-                
+
                 <select
                   value={newCharacter.model}
-                  onChange={(e) => setNewCharacter({ ...newCharacter, model: e.target.value })}
+                  onChange={(e) =>
+                    setNewCharacter({ ...newCharacter, model: e.target.value })
+                  }
                   className="w-full bg-gray-700 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <optgroup label="OpenAI">
-                    {subscriptionStatus.tier === 'pro' && (
+                    {subscriptionStatus.tier === "pro" && (
                       <option value="chatgpt-4o-latest">GPT-4o Latest</option>
                     )}
                     <option value="gpt-4o-mini">GPT-4o Mini</option>
                   </optgroup>
-                  {subscriptionStatus.tier === 'pro' && (
+                  {subscriptionStatus.tier === "pro" && (
                     <optgroup label="Anthropic">
-                      <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
-                      <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku</option>
+                      <option value="claude-3-5-sonnet-20241022">
+                        Claude 3.5 Sonnet
+                      </option>
+                      <option value="claude-3-5-haiku-20241022">
+                        Claude 3.5 Haiku
+                      </option>
                     </optgroup>
                   )}
                 </select>
-                
+
                 <textarea
                   placeholder="System Prompt"
                   value={newCharacter.systemPrompt}
-                  onChange={(e) => setNewCharacter({ ...newCharacter, systemPrompt: e.target.value })}
+                  onChange={(e) =>
+                    setNewCharacter({
+                      ...newCharacter,
+                      systemPrompt: e.target.value,
+                    })
+                  }
                   className="w-full bg-gray-700 rounded-lg px-4 py-2 h-32 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
 
@@ -209,7 +240,12 @@ export default function Dashboard() {
                     <input
                       type="checkbox"
                       checked={newCharacter.isPublic}
-                      onChange={(e) => setNewCharacter({ ...newCharacter, isPublic: e.target.checked })}
+                      onChange={(e) =>
+                        setNewCharacter({
+                          ...newCharacter,
+                          isPublic: e.target.checked,
+                        })
+                      }
                       className="sr-only peer"
                     />
                     <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>

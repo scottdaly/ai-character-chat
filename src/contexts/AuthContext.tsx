@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from "react";
 
 interface User {
   id: string;
@@ -6,25 +6,36 @@ interface User {
   email: string;
   username: string | null;
   isAdmin: boolean;
+  profilePicture?: string | null;
 }
 
 interface AuthContextType {
   user: User | null;
-  login: () => void;
+  login: (token: string) => void;
   logout: () => void;
-  apiFetch: <T = any>(url: string, options?: RequestInit) => Promise<T>;
+  apiFetch: (url: string, options?: RequestInit) => Promise<any>;
+  updateUser: (user: User) => void;
 }
 
-const AuthContext = createContext<AuthContextType>(null!);
+export const AuthContext = createContext<AuthContextType>({
+  user: null,
+  login: () => {},
+  logout: () => {},
+  apiFetch: async () => {},
+  updateUser: () => {},
+});
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(
+    localStorage.getItem("token")
+  );
   const [isLoading, setIsLoading] = useState(true);
 
-  const apiFetch = async <T = any>(url: string, options: RequestInit = {}) => {
-    const token = localStorage.getItem('token');
+  const apiFetch = async <T = any,>(url: string, options: RequestInit = {}) => {
+    const token = localStorage.getItem("token");
     const headers = {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       ...options.headers,
       ...(token && { Authorization: `Bearer ${token}` }),
     };
@@ -35,59 +46,67 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     // Check if the response is JSON
-    const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-      throw new Error('Server error: Expected JSON response');
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      throw new Error("Server error: Expected JSON response");
     }
-    
+
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(data.error || 'API request failed');
+      throw new Error(data.error || "API request failed");
     }
 
     return data as T;
   };
 
-  const login = () => {
+  const login = (token: string) => {
+    localStorage.setItem("token", token);
+    setToken(token);
     window.location.href = `${import.meta.env.VITE_API_URL}/auth/google`;
   };
 
   const logout = async () => {
     try {
-      await apiFetch('/api/logout', { method: 'POST' });
+      await apiFetch("/api/logout", { method: "POST" });
     } catch (error) {
-      console.error('Logout failed:', error);
+      console.error("Logout failed:", error);
     } finally {
-      localStorage.removeItem('token');
+      localStorage.removeItem("token");
       setUser(null);
-      window.location.href = '/';
+      setToken(null);
+      window.location.href = "/";
     }
+  };
+
+  const updateUser = (updatedUser: User) => {
+    setUser(updatedUser);
   };
 
   useEffect(() => {
     const checkAuth = async () => {
       try {
         setIsLoading(true);
-        const token = localStorage.getItem('token');
-        
+        const token = localStorage.getItem("token");
+
         if (!token) {
           setUser(null);
           return;
         }
 
-        const userData = await apiFetch('/api/me');
-        
+        const userData = await apiFetch("/api/me");
+
         setUser({
           id: userData.id,
           displayName: userData.displayName,
           email: userData.email,
           username: userData.username,
-          isAdmin: userData.isAdmin
+          isAdmin: userData.isAdmin,
+          profilePicture: userData.profilePicture,
         });
       } catch (error) {
-        console.error('Auth check failed:', error);
-        if (error instanceof Error && error.message === 'Unauthorized') {
-          localStorage.removeItem('token');
+        console.error("Auth check failed:", error);
+        if (error instanceof Error && error.message === "Unauthorized") {
+          localStorage.removeItem("token");
           setUser(null);
         }
       } finally {
@@ -102,9 +121,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       checkAuth();
     };
 
-    window.addEventListener('focus', handleFocus);
+    window.addEventListener("focus", handleFocus);
     return () => {
-      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener("focus", handleFocus);
     };
   }, []);
 
@@ -117,7 +136,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, apiFetch }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        login,
+        logout,
+        apiFetch,
+        updateUser,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
