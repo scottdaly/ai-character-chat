@@ -7,7 +7,6 @@ import { Character } from "../types";
 import { getModelAlias } from "./CharacterCard";
 import { FiArrowRight } from "react-icons/fi";
 import InfiniteCarousel from "./InfiniteCarousel";
-import { Slide } from "./Carousel";
 
 export default function Home() {
   const { user, login } = useAuth();
@@ -23,7 +22,7 @@ export default function Home() {
     }
   }, [user, navigate]);
 
-  const slides: Slide[] = [
+  const slides = [
     {
       id: 1,
       title: "Software Engineer",
@@ -112,19 +111,33 @@ export default function Home() {
     <div className="min-h-screen bg-zinc-950 text-gray-100">
       <nav className="p-4">
         <div className="mx-auto flex items-center justify-between max-w-[1560px]">
-          <div className="flex items-center gap-2">
-            {/* <img src={Logo} alt="NeverMade" className="w-8 h-8 mt-1" /> */}
+          <div className="flex items-center gap-1">
+            <svg
+              width="155"
+              height="267"
+              viewBox="0 0 155 267"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              className="w-8 h-8"
+            >
+              <path
+                d="M142.666 3.46669C132.132 7.73336 119.466 16.9334 101.866 33.0667C76.2658 56.4 68.9324 62.2667 47.0658 76.8C18.2658 96 5.59909 109.867 2.53242 125.6L1.73242 130H8.26576C22.5324 130 35.0658 124.267 69.1991 102C80.7991 94.5334 95.4658 85.7334 101.866 82.4C114.532 76 134.399 69.2 144.932 67.6C151.066 66.8 151.999 66.2667 153.066 62.6667C155.066 56.1334 154.932 15.6 152.799 7.60002C151.866 3.86669 150.666 0.666685 150.266 0.800018C149.732 0.800018 146.399 2.00002 142.666 3.46669Z"
+                fill="white"
+              />
+              <path
+                d="M122 85.4667C105.2 89.8667 91.3334 98.8 66.6667 121.067C59.4667 127.467 46.6667 137.733 38.1334 143.867C29.6 150 19.7333 158.133 16.2667 161.867C1.73335 177.333 -3.19999 199.467 2.66668 222.4C3.46668 225.333 4.13335 225.867 6.53335 225.2C21.7333 220.533 35.6 211.867 48.4 199.067C57.7334 189.733 66.2667 177.6 80.5334 153.067C92.1334 133.067 100.667 122.667 112 114.667C123.2 106.667 132.133 103.2 144.667 102.133L154.667 101.333V93.3334C154.667 85.6 154.533 85.3334 150.667 84.5334C143.6 82.9334 129.6 83.4667 122 85.4667Z"
+                fill="white"
+              />
+              <path
+                d="M139.467 130.8C129.067 133.6 116.8 140 107.867 147.2C91.2003 160.533 82.2669 175.333 67.4669 214.4C57.0669 241.733 53.8669 247.6 43.4669 257.867L34.9336 266.4L42.2669 265.6C57.0669 264.133 67.6003 255.733 88.6669 228.667C101.334 212.533 112.4 201.067 132.4 183.6C148.667 169.333 153.6 159.6 154.267 139.6L154.667 128.667L150.667 128.8C148.534 128.8 143.467 129.733 139.467 130.8Z"
+                fill="white"
+              />
+            </svg>
             <h1 className="text-3xl instrument-serif-regular text-white">
               NeverMade
             </h1>
           </div>
           <div className="flex items-center gap-4">
-            {/* <Link
-              to="/explore"
-              className="rounded-lg px-4 py-2 hover:bg-zinc-800 hover:scale-102 transition-all duration-300"
-            >
-              Explore
-            </Link> */}
             {user ? (
               <>
                 <Link
@@ -136,7 +149,7 @@ export default function Home() {
               </>
             ) : (
               <button
-                onClick={login}
+                onClick={() => login()}
                 className="flex items-center cursor-pointer gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 hover:bg-zinc-700 hover:scale-102 transition-all duration-300"
               >
                 <FcGoogle className="text-xl" /> Sign In
@@ -165,7 +178,7 @@ export default function Home() {
                 </Link>
               ) : (
                 <button
-                  onClick={login}
+                  onClick={() => login()}
                   className="flex flex-row items-center justify-center gap-2 rounded-xl bg-white border border-zinc-300 text-zinc-900 pl-8 pr-7 py-3 text-xl font-semibold hover:bg-zinc-100 cursor-pointer hover:scale-102 transition-all duration-300"
                 >
                   <span>Get Started</span>
@@ -289,7 +302,7 @@ export default function Home() {
                 ) : (
                   <button
                     key={character.id}
-                    onClick={login}
+                    onClick={() => login()}
                     className="p-6 bg-zinc-800 rounded-xl hover:bg-zinc-700 transition-colors text-left w-full"
                   >
                     <div className="flex items-start justify-between mb-4">

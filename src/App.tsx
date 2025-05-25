@@ -1,5 +1,10 @@
 // src/App.tsx
-import { createBrowserRouter, RouterProvider, Outlet } from "react-router-dom";
+import {
+  createBrowserRouter,
+  RouterProvider,
+  Outlet,
+  Navigate,
+} from "react-router-dom";
 import Home from "./components/Home";
 import Dashboard from "./components/Dashboard";
 import Explore from "./components/Explore";
@@ -9,12 +14,19 @@ import ConversationChat from "./components/ConversationChat";
 import AuthSuccess from "./components/AuthSuccess";
 import SetupUsername from "./components/SetupUsername";
 import UsernamePromptModal from "./components/UsernamePromptModal";
+import CreateCharacter from "./components/CreateCharacter";
 import { useAuth } from "./contexts/AuthContext";
 import Test from "./components/Test";
 import Admin from "./components/Admin";
 import AdminLogin from "./components/AdminLogin";
 import SubscriptionPlans from "./components/SubscriptionPlans";
 import AccountSettings from "./components/AccountSettings";
+
+// Component to handle character redirect
+function CharacterRedirect() {
+  const tempId = `temp-${Date.now()}`;
+  return <Navigate to={`conversations/${tempId}`} replace />;
+}
 
 const router = createBrowserRouter([
   {
@@ -31,11 +43,13 @@ const router = createBrowserRouter([
         element: <ProtectedRoute />,
         children: [
           { index: true, element: <Dashboard /> },
+          { path: "create-character", element: <CreateCharacter /> },
           {
             path: "characters/:characterId",
             element: <CharacterLayout />,
             children: [
-              { path: "conversations", element: <ConversationList /> },
+              { index: true, element: <CharacterRedirect /> },
+              { path: "conversations", element: <CharacterRedirect /> },
               {
                 path: "conversations/:conversationId",
                 element: <ConversationChat />,

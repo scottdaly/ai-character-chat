@@ -1,19 +1,19 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function SetupUsername() {
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const { apiFetch } = useAuth();
+  const { apiFetch, updateUser } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
     // Get token from URL and store it
-    const token = new URLSearchParams(window.location.search).get('token');
+    const token = new URLSearchParams(window.location.search).get("token");
     if (token) {
-      localStorage.setItem('token', token);
+      localStorage.setItem("token", token);
       // Clear token from URL
       window.history.replaceState({}, document.title, window.location.pathname);
     }
@@ -25,28 +25,44 @@ export default function SetupUsername() {
     setIsLoading(true);
 
     try {
-      console.log('Sending username:', username);
-      const response = await apiFetch('/api/setup-username', {
-        method: 'POST',
-        body: JSON.stringify({ username })
+      console.log("Sending username:", username);
+      const response = await apiFetch("/api/setup-username", {
+        method: "POST",
+        body: JSON.stringify({ username }),
       });
 
-      console.log('Response:', response);
+      console.log("Response:", response);
       console.log("Response success?", response.success);
 
       if (response.success === false) {
-        throw new Error(response.error || 'Failed to set username');
+        throw new Error(response.error || "Failed to set username");
       }
 
       // Store the new token if one is returned
       if (response.token) {
-        localStorage.setItem('token', response.token);
+        localStorage.setItem("token", response.token);
+      }
+
+      // Refresh user data to update the context with the new username
+      try {
+        const updatedUserData = await apiFetch("/api/me");
+        updateUser({
+          id: updatedUserData.id,
+          displayName: updatedUserData.displayName,
+          email: updatedUserData.email,
+          username: updatedUserData.username,
+          isAdmin: updatedUserData.isAdmin,
+          profilePicture: updatedUserData.profilePicture,
+        });
+      } catch (userFetchError) {
+        console.error("Failed to refresh user data:", userFetchError);
+        // Continue anyway since username was set successfully
       }
 
       // Username set successfully, redirect to dashboard
-      navigate('/dashboard');
+      navigate("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to set username');
+      setError(err instanceof Error ? err.message : "Failed to set username");
     } finally {
       setIsLoading(false);
     }
@@ -55,11 +71,16 @@ export default function SetupUsername() {
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 flex items-center justify-center">
       <div className="w-full max-w-md p-8 bg-gray-800 rounded-xl">
-        <h1 className="text-2xl font-bold mb-6 text-center">Choose Your Username</h1>
-        
+        <h1 className="text-2xl font-bold mb-6 text-center">
+          Choose Your Username
+        </h1>
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="username" className="block text-sm font-medium mb-2">
+            <label
+              htmlFor="username"
+              className="block text-sm font-medium mb-2"
+            >
               Username
             </label>
             <input
@@ -74,25 +95,22 @@ export default function SetupUsername() {
               required
             />
             <p className="mt-1 text-sm text-gray-400">
-              This will be displayed as your creator name for characters you create.
+              This will be displayed as your creator name for characters you
+              create.
             </p>
           </div>
 
-          {error && (
-            <div className="text-red-500 text-sm">
-              {error}
-            </div>
-          )}
+          {error && <div className="text-red-500 text-sm">{error}</div>}
 
           <button
             type="submit"
             disabled={isLoading}
             className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:cursor-not-allowed py-2 px-4 rounded-lg transition-colors"
           >
-            {isLoading ? 'Setting username...' : 'Continue'}
+            {isLoading ? "Setting username..." : "Continue"}
           </button>
         </form>
       </div>
     </div>
   );
-} 
+}

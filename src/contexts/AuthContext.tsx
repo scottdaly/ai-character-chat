@@ -11,9 +11,9 @@ interface User {
 
 interface AuthContextType {
   user: User | null;
-  login: (token: string) => void;
+  login: (token?: string) => void;
   logout: () => void;
-  apiFetch: (url: string, options?: RequestInit) => Promise<any>;
+  apiFetch: <T = any>(url: string, options?: RequestInit) => Promise<T>;
   updateUser: (user: User) => void;
 }
 
@@ -21,7 +21,9 @@ export const AuthContext = createContext<AuthContextType>({
   user: null,
   login: () => {},
   logout: () => {},
-  apiFetch: async () => {},
+  apiFetch: async () => {
+    throw new Error("apiFetch not implemented");
+  },
   updateUser: () => {},
 });
 
@@ -59,9 +61,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return data as T;
   };
 
-  const login = (token: string) => {
-    localStorage.setItem("token", token);
-    setToken(token);
+  const login = (token?: string) => {
+    if (token) {
+      localStorage.setItem("token", token);
+      setToken(token);
+    }
     window.location.href = `${import.meta.env.VITE_API_URL}/auth/google`;
   };
 
@@ -118,12 +122,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Add an event listener to check auth when the window regains focus
     const handleFocus = () => {
-      checkAuth();
+      // checkAuth(); // Commented out to prevent re-fetch on focus
     };
 
-    window.addEventListener("focus", handleFocus);
+    // window.addEventListener("focus", handleFocus); // Commented out
     return () => {
-      window.removeEventListener("focus", handleFocus);
+      // window.removeEventListener("focus", handleFocus); // Commented out
     };
   }, []);
 

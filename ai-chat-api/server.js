@@ -15,7 +15,9 @@ const jwt = require("jsonwebtoken");
 const cors = require("cors");
 const { OpenAI } = require("openai");
 const Anthropic = require("@anthropic-ai/sdk");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 const bcrypt = require("bcrypt");
+const { v4: uuidv4 } = require("uuid");
 
 // Initialize Stripe with the secret key from environment variables
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
@@ -75,6 +77,11 @@ const User = sequelize.define("User", {
 const Character = sequelize.define(
   "Character",
   {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
     name: DataTypes.STRING,
     description: {
       type: DataTypes.TEXT,
@@ -99,6 +106,11 @@ const Character = sequelize.define(
 );
 
 const Conversation = sequelize.define("Conversation", {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+  },
   title: DataTypes.STRING,
   lastMessage: DataTypes.TEXT,
 });
@@ -106,6 +118,11 @@ const Conversation = sequelize.define("Conversation", {
 const Message = sequelize.define(
   "Message",
   {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
     content: DataTypes.TEXT,
     role: DataTypes.STRING,
   },
@@ -174,9 +191,68 @@ const initializeStripePortal = async () => {
 // Initialize Database
 (async () => {
   try {
-    // First, sync without altering existing tables
-    await sequelize.sync();
+    console.log(
+      "Initializing database at:",
+      path.resolve(__dirname, "database.sqlite")
+    );
+    console.log(
+      "Database file exists:",
+      require("fs").existsSync(path.resolve(__dirname, "database.sqlite"))
+    );
+
+    // Check if we need to migrate from integer IDs to UUIDs
+    const needsUuidMigration = async () => {
+      try {
+        // Check if Characters table exists and has integer ID
+        const charactersTableInfo = await sequelize.query(
+          "SELECT sql FROM sqlite_master WHERE type='table' AND name='Characters'",
+          { type: Sequelize.QueryTypes.SELECT }
+        );
+
+        if (charactersTableInfo.length > 0) {
+          const createSql = charactersTableInfo[0].sql;
+          // If the table exists but doesn't have UUID primary key, we need migration
+          return (
+            !createSql.includes('id" UUID') && !createSql.includes("id UUID")
+          );
+        }
+        return false;
+      } catch (error) {
+        return false;
+      }
+    };
+
+    if (await needsUuidMigration()) {
+      console.log("Migrating database from integer IDs to UUIDs...");
+
+      // For development, we'll drop and recreate tables
+      // In production, you'd want a more sophisticated migration
+      // Commenting out to prevent data loss - database should already be using UUIDs
+      /*
+      if (process.env.NODE_ENV === "development") {
+        await sequelize.drop();
+        console.log("Dropped existing tables for UUID migration");
+      } else {
+        console.warn(
+          "UUID migration needed but not implemented for production. Please backup your data and run migration manually."
+        );
+      }
+      */
+      console.log(
+        "UUID migration check completed - skipping drop to preserve data"
+      );
+    }
+
+    // Sync database with new UUID schema
+    await sequelize.sync({ force: false });
     await initializeStripePortal();
+
+    // Log existing data to help debug persistence
+    const userCount = await User.count();
+    const characterCount = await Character.count();
+    console.log(
+      `Database sync complete. Found ${userCount} users and ${characterCount} characters.`
+    );
 
     // Check if new columns need to be added
     const hasStripeColumns = await sequelize.query(
@@ -446,6 +522,16 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+// Google AI Configuration
+let googleAI;
+if (process.env.GOOGLE_AI_API_KEY) {
+  googleAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY);
+} else {
+  console.warn(
+    "GOOGLE_AI_API_KEY not found. Google AI models will not be available."
+  );
+}
+
 // Auth Routes
 app.get(
   "/auth/google",
@@ -591,8 +677,49 @@ app.post(
   authenticateToken,
   async (req, res) => {
     try {
+      // SERVER-SIDE VALIDATION FOR NEW CONVERSATION CREATION (FREE TIER)
+      if (req.user.subscriptionTier === "free") {
+        console.log(
+          `[NEW CONVO VALIDATION] User ${req.user.id} (${req.user.username}) on free tier. Validating creation for char ${req.params.characterId}.`
+        );
+        const existingConversations = await Conversation.findAll({
+          where: { UserId: req.user.id },
+          attributes: ["CharacterId"], // Only need CharacterId to find unique ones
+          raw: true, // Get plain objects
+        });
+
+        const uniqueInteractedCharacterIds = [
+          ...new Set(
+            existingConversations.map((conv) => conv.CharacterId.toString())
+          ),
+        ];
+        console.log(
+          `[NEW CONVO VALIDATION] User has interacted with unique characters:`,
+          uniqueInteractedCharacterIds
+        );
+
+        const currentCharacterIdToCreateFor = req.params.characterId.toString();
+
+        if (
+          uniqueInteractedCharacterIds.length >= 3 &&
+          !uniqueInteractedCharacterIds.includes(currentCharacterIdToCreateFor)
+        ) {
+          console.log(
+            `[NEW CONVO VALIDATION] DENIED: User has >=3 unique characters and trying to create with new char ${currentCharacterIdToCreateFor}.`
+          );
+          return res.status(403).json({
+            error:
+              "Upgrade to Pro to start conversations with new characters. You have reached your limit for the free plan.",
+          });
+        }
+        console.log(
+          `[NEW CONVO VALIDATION] ALLOWED: Conditions for denial not met for char ${currentCharacterIdToCreateFor}.`
+        );
+      }
+      // END SERVER-SIDE VALIDATION FOR NEW CONVERSATION
+
       const conversation = await Conversation.create({
-        title: "New Conversation",
+        title: "New Conversation", // Initial title
         lastMessage: "",
         UserId: req.user.id,
         CharacterId: req.params.characterId,
@@ -603,6 +730,29 @@ app.post(
     }
   }
 );
+
+// Add this new route for all user conversations
+app.get("/api/conversations", authenticateToken, async (req, res) => {
+  try {
+    const conversations = await Conversation.findAll({
+      where: {
+        UserId: req.user.id,
+      },
+      include: [
+        {
+          model: Character,
+          attributes: ["id", "name", "model"], // Include basic character info
+          required: true,
+        },
+      ],
+      order: [["updatedAt", "DESC"]], // Order by most recently updated
+    });
+    res.json(conversations);
+  } catch (err) {
+    console.error("Failed to load user conversations:", err);
+    res.status(500).json({ error: "Failed to load user conversations" });
+  }
+});
 
 // Message Routes
 app.get(
@@ -640,6 +790,72 @@ app.post(
       if (!conversation) {
         return res.status(404).json({ error: "Conversation not found" });
       }
+
+      // SERVER-SIDE ACCESS VALIDATION FOR FREE TIER
+      if (req.user.subscriptionTier === "free") {
+        console.log(
+          `[SERVER VALIDATION] User ${req.user.id} (${req.user.username}) is on free tier. Validating message send for char ${conversation.CharacterId}...`
+        );
+
+        const allUserConversations = await Conversation.findAll({
+          where: { UserId: req.user.id },
+          attributes: ["CharacterId", "createdAt"],
+          order: [["createdAt", "DESC"]],
+        });
+        console.log(
+          `[SERVER VALIDATION] Found ${allUserConversations.length} total conversations for user.`
+        );
+        // console.log("[SERVER VALIDATION] All conversations raw:", JSON.stringify(allUserConversations.map(c => ({ charId: c.CharacterId, updated: c.updatedAt })), null, 2));
+
+        const uniqueRecentCharacterIds = [
+          ...new Set(
+            allUserConversations.map((conv) => conv.CharacterId.toString())
+          ),
+        ];
+        console.log(
+          "[SERVER VALIDATION] Unique recent character IDs (ordered by convo recency):",
+          uniqueRecentCharacterIds
+        );
+
+        const currentCharacterIdStr = conversation.CharacterId.toString();
+        console.log(
+          "[SERVER VALIDATION] Current character ID for this conversation:",
+          currentCharacterIdStr
+        );
+
+        if (uniqueRecentCharacterIds.length >= 3) {
+          console.log(
+            "[SERVER VALIDATION] User has interacted with 3 or more unique characters."
+          );
+          const allowedCharacterIdsSlice = uniqueRecentCharacterIds.slice(0, 3);
+          console.log(
+            "[SERVER VALIDATION] Allowed most recent 3 character IDs:",
+            allowedCharacterIdsSlice
+          );
+
+          if (!allowedCharacterIdsSlice.includes(currentCharacterIdStr)) {
+            console.log(
+              `[SERVER VALIDATION] DENIED: Character ${currentCharacterIdStr} is NOT in the allowed slice. Sending 403.`
+            );
+            return res.status(403).json({
+              error:
+                "Upgrade to Pro to send messages to this character. You can chat with your 3 most recent characters on the free plan.",
+            });
+          }
+          console.log(
+            `[SERVER VALIDATION] ALLOWED: Character ${currentCharacterIdStr} IS in the allowed slice.`
+          );
+        } else {
+          console.log(
+            "[SERVER VALIDATION] ALLOWED: User has interacted with fewer than 3 unique characters."
+          );
+        }
+      } else {
+        console.log(
+          `[SERVER VALIDATION] User ${req.user.id} (${req.user.username}) is on tier '${req.user.subscriptionTier}'. Skipping free tier validation.`
+        );
+      }
+      // END SERVER-SIDE ACCESS VALIDATION
 
       if (!conversation.Character) {
         return res
@@ -680,6 +896,10 @@ app.post(
 
         // Get AI response with full conversation history
         let aiResponse;
+        console.log(
+          `[MODEL SELECTION] Using model: ${conversation.Character.model} for character: ${conversation.Character.name}`
+        );
+
         if (conversation.Character.model.startsWith("claude-")) {
           // Format messages for Claude API
           const formattedMessages = messageHistory.map((msg) => {
@@ -719,7 +939,73 @@ app.post(
                 (claudeError.message || "Unknown error")
             );
           }
+        } else if (conversation.Character.model.startsWith("gemini-")) {
+          // Format messages for Google AI
+          console.log(
+            `[GOOGLE AI] Calling Google AI with model: ${conversation.Character.model}`
+          );
+          try {
+            if (!googleAI) {
+              throw new Error(
+                "Google AI is not configured. Please set GOOGLE_AI_API_KEY environment variable."
+              );
+            }
+
+            const model = googleAI.getGenerativeModel({
+              model: conversation.Character.model,
+            });
+
+            // Convert conversation history to Google AI format
+            const chatHistory = [];
+            let systemPromptIncluded = false;
+
+            for (const msg of messageHistory) {
+              if (msg.role === "system") {
+                // Include system prompt in the first user message
+                systemPromptIncluded = true;
+                continue;
+              }
+
+              chatHistory.push({
+                role: msg.role === "assistant" ? "model" : "user",
+                parts: [{ text: msg.content }],
+              });
+            }
+
+            // Start chat with history
+            const chat = model.startChat({
+              history: chatHistory.slice(0, -1), // Exclude the last message
+              generationConfig: {
+                maxOutputTokens: 1024,
+                temperature: 0.7,
+              },
+            });
+
+            // Include system prompt in the user message if this is the first message
+            const userMessage =
+              systemPromptIncluded && chatHistory.length <= 1
+                ? `${conversation.Character.systemPrompt}\n\nUser: ${req.body.content}`
+                : req.body.content;
+
+            const result = await chat.sendMessage(userMessage);
+            const response = await result.response;
+            aiResponse = response.text();
+
+            if (!aiResponse) {
+              throw new Error("Empty response from Google AI");
+            }
+          } catch (googleError) {
+            console.error("Google AI error:", googleError);
+            throw new Error(
+              "Failed to get AI response: " +
+                (googleError.message || "Unknown error")
+            );
+          }
         } else {
+          // OpenAI models
+          console.log(
+            `[OPENAI] Calling OpenAI with model: ${conversation.Character.model}`
+          );
           const response = await openai.chat.completions.create({
             model: conversation.Character.model,
             messages: messageHistory,
@@ -889,10 +1175,19 @@ app.put("/api/characters/:characterId", authenticateToken, async (req, res) => {
 
     // Validate model
     const allowedModels = [
-      "chatgpt-4o-latest",
+      // OpenAI models
       "gpt-4o-mini",
+      "gpt-4o",
+      "chatgpt-4o-latest",
+      "gpt-3.5-turbo",
+      // Anthropic models
       "claude-3-5-sonnet-20241022",
       "claude-3-5-haiku-20241022",
+      "claude-3-haiku-20240307",
+      // Google models
+      "gemini-1.5-flash",
+      "gemini-1.5-pro",
+      "gemini-1.0-pro",
     ];
     if (!allowedModels.includes(req.body.model)) {
       return res.status(400).json({ error: "Invalid model selected" });
@@ -1033,10 +1328,19 @@ app.put("/api/admin/characters/:id", authenticateToken, async (req, res) => {
 
     // Validate model
     const allowedModels = [
-      "chatgpt-4o-latest",
+      // OpenAI models
       "gpt-4o-mini",
+      "gpt-4o",
+      "chatgpt-4o-latest",
+      "gpt-3.5-turbo",
+      // Anthropic models
       "claude-3-5-sonnet-20241022",
       "claude-3-5-haiku-20241022",
+      "claude-3-haiku-20240307",
+      // Google models
+      "gemini-1.5-flash",
+      "gemini-1.5-pro",
+      "gemini-1.0-pro",
     ];
     if (!allowedModels.includes(req.body.model)) {
       return res.status(400).json({ error: "Invalid model selected" });
@@ -1262,6 +1566,124 @@ app.put("/api/profile", authenticateToken, async (req, res) => {
     res.status(500).json({ error: "Failed to update profile" });
   }
 });
+
+// Add endpoint to update username
+app.put("/api/profile/username", authenticateToken, async (req, res) => {
+  try {
+    const { username } = req.body;
+
+    if (!username || username.length < 3 || username.length > 30) {
+      return res
+        .status(400)
+        .json({ error: "Username must be between 3 and 30 characters" });
+    }
+
+    // Check if username is reserved (nevermade)
+    if (username.toLowerCase() === "nevermade") {
+      return res.status(400).json({ error: "This username is reserved" });
+    }
+
+    // Check if username is already taken
+    const existingUser = await User.findOne({ where: { username } });
+    if (existingUser && existingUser.id !== req.user.id) {
+      return res.status(400).json({ error: "Username is already taken" });
+    }
+
+    // Update user's username
+    await req.user.update({ username });
+
+    res.json({ success: true, username });
+  } catch (err) {
+    console.error("Username update error:", err);
+    res.status(500).json({ error: "Failed to update username" });
+  }
+});
+
+// Add endpoint to check username availability
+app.get("/api/check-username/:username", async (req, res) => {
+  try {
+    const { username } = req.params;
+
+    // Basic validation
+    if (!username || username.length < 3 || username.length > 30) {
+      return res.json({
+        available: false,
+        reason: "Username must be between 3 and 30 characters",
+      });
+    }
+
+    // Check if username is reserved
+    if (username.toLowerCase() === "nevermade") {
+      return res.json({
+        available: false,
+        reason: "This username is reserved",
+      });
+    }
+
+    // Check if username is already taken
+    const existingUser = await User.findOne({ where: { username } });
+    if (existingUser) {
+      return res.json({
+        available: false,
+        reason: "Username is already taken",
+      });
+    }
+
+    res.json({ available: true });
+  } catch (err) {
+    console.error("Username check error:", err);
+    res.status(500).json({ error: "Failed to check username" });
+  }
+});
+
+// Add endpoint to check character access for free tier users
+app.get(
+  "/api/characters/:characterId/access",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      // If user is on pro tier, they always have access
+      if (req.user.subscriptionTier === "pro") {
+        return res.json({ hasAccess: true });
+      }
+
+      // For free tier users, check if character is in their allowed set
+      const allUserConversations = await Conversation.findAll({
+        where: { UserId: req.user.id },
+        attributes: ["CharacterId", "createdAt"],
+        order: [["createdAt", "DESC"]],
+      });
+
+      const uniqueRecentCharacterIds = [
+        ...new Set(
+          allUserConversations.map((conv) => conv.CharacterId.toString())
+        ),
+      ];
+
+      const currentCharacterIdStr = req.params.characterId.toString();
+      const allowedCharacterIdsSlice = uniqueRecentCharacterIds.slice(0, 3);
+
+      // Check if character is in allowed set
+      const hasAccess = allowedCharacterIdsSlice.includes(
+        currentCharacterIdStr
+      );
+
+      // If no access, include the error message
+      if (!hasAccess) {
+        return res.json({
+          hasAccess: false,
+          reason:
+            "Upgrade to Pro to chat with this character. You can chat with your 3 most recent characters on the free plan.",
+        });
+      }
+
+      res.json({ hasAccess: true });
+    } catch (err) {
+      console.error("Failed to check character access:", err);
+      res.status(500).json({ error: "Failed to check character access" });
+    }
+  }
+);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

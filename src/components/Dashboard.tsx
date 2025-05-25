@@ -3,31 +3,27 @@ import { Link, useNavigate } from "react-router-dom";
 import { FiPlus } from "react-icons/fi";
 import { useAuth } from "../contexts/AuthContext";
 import { useCharacters } from "../api/characters";
-import CharacterCard from "./CharacterCard";
+import CharacterCard, { CharacterCardSkeleton } from "./CharacterCard";
 import { Character } from "../types";
 import Navbar from "./Navbar";
+import { useUserConversations } from "../api/useUserConversations";
+import { checkCharacterAccess } from "../api/characterAccess";
 
 export default function Dashboard() {
   const { user, apiFetch } = useAuth();
   const navigate = useNavigate();
   const { characters, createCharacter, isLoading, error } = useCharacters();
-  const [showCharacterForm, setShowCharacterForm] = useState(false);
+  const {
+    conversations: userConversations,
+    isLoading: isLoadingConversations,
+  } = useUserConversations();
+  const [showSkeletons, setShowSkeletons] = useState(false);
+  const [isContentVisible, setIsContentVisible] = useState(false);
   const [subscriptionStatus, setSubscriptionStatus] = useState<{
     status: string;
     tier: string;
     currentPeriodEnd: string | null;
   }>({ status: "free", tier: "free", currentPeriodEnd: null });
-
-  const [newCharacter, setNewCharacter] = useState<Omit<Character, "id">>({
-    name: "",
-    description: "",
-    model: "gpt-4o-mini",
-    systemPrompt: "",
-    createdAt: new Date(),
-    UserId: user?.id ? Number(user.id) : 0,
-    isPublic: false,
-    messageCount: 0,
-  });
 
   useEffect(() => {
     const fetchSubscriptionStatus = async () => {
@@ -42,38 +38,55 @@ export default function Dashboard() {
     fetchSubscriptionStatus();
   }, [apiFetch]);
 
-  const handleCreateCharacter = async () => {
-    try {
-      // Check character limit for free users
-      if (subscriptionStatus.tier === "free" && characters.length >= 3) {
-        navigate("/plans");
-        return;
-      }
+  // Handle loading states with smooth transitions
+  useEffect(() => {
+    const isActuallyLoading = isLoading || isLoadingConversations;
 
-      await createCharacter(newCharacter);
-      setShowCharacterForm(false);
-      setNewCharacter({
-        name: "",
-        description: "",
-        model: "gpt-4o-mini",
-        systemPrompt: "",
-        createdAt: new Date(),
-        UserId: user?.id ? Number(user.id) : 0,
-        isPublic: false,
-        messageCount: 0,
-      });
-    } catch (error) {
-      console.error("Failed to create character:", error);
+    if (isActuallyLoading) {
+      setIsContentVisible(false);
+
+      // Show skeletons after 200ms if still loading
+      const skeletonTimer = setTimeout(() => {
+        if (isLoading || isLoadingConversations) {
+          setShowSkeletons(true);
+        }
+      }, 200);
+
+      return () => clearTimeout(skeletonTimer);
+    } else {
+      // Loading finished
+      const finishLoading = async () => {
+        // If skeletons were shown, ensure minimum display time
+        if (showSkeletons) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+
+        setShowSkeletons(false);
+
+        // Fade in content
+        setTimeout(() => setIsContentVisible(true), 50);
+      };
+
+      finishLoading();
     }
+  }, [isLoading, isLoadingConversations, showSkeletons]);
+
+  const handleCreateCharacter = () => {
+    // Check character limit for free users
+    if (subscriptionStatus.tier === "free" && characters.length >= 3) {
+      navigate("/plans");
+      return;
+    }
+
+    navigate("/dashboard/create-character");
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-      </div>
-    );
-  }
+  // Create skeleton loaders
+  const renderSkeletonCards = (count: number) => {
+    return Array.from({ length: count }, (_, index) => (
+      <CharacterCardSkeleton key={`skeleton-${index}`} />
+    ));
+  };
 
   if (error) {
     return (
@@ -82,6 +95,48 @@ export default function Dashboard() {
       </div>
     );
   }
+
+  // Get user's created character IDs
+  const userCreatedCharacterIds = characters
+    .filter((char) => char.UserId?.toString() === user?.id)
+    .map((char) => String(char.id));
+
+  // Sort characters by access status and recency
+  const sortedCharacters = [...characters].sort((a, b) => {
+    const aId = String(a.id);
+    const bId = String(b.id);
+
+    if (subscriptionStatus.tier === "free") {
+      const aAccess = checkCharacterAccess(
+        aId,
+        subscriptionStatus.tier,
+        userConversations,
+        userCreatedCharacterIds
+      );
+      const bAccess = checkCharacterAccess(
+        bId,
+        subscriptionStatus.tier,
+        userConversations,
+        userCreatedCharacterIds
+      );
+
+      // Accessible characters first
+      if (aAccess.hasAccess && !bAccess.hasAccess) return -1;
+      if (!aAccess.hasAccess && bAccess.hasAccess) return 1;
+
+      // Among accessible characters, prioritize by allowed order
+      if (aAccess.hasAccess && bAccess.hasAccess) {
+        const aIndex = aAccess.allowedCharacterIds.indexOf(aId);
+        const bIndex = bAccess.allowedCharacterIds.indexOf(bId);
+        if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+        if (aIndex !== -1) return -1;
+        if (bIndex !== -1) return 1;
+      }
+    }
+
+    // Default sort by creation date
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
 
   return (
     <div className="flex-1 flex flex-col h-full bg-zinc-900 overflow-y-auto dark-scrollbar">
@@ -98,7 +153,7 @@ export default function Dashboard() {
             </p>
             {/* Create Character Button */}
             <button
-              onClick={() => setShowCharacterForm(true)}
+              onClick={handleCreateCharacter}
               className="w-full font-semibold cursor-pointer md:w-auto my-8 md:my-0 bg-transparent from-transparent to-transparent border border-zinc-700 hover:bg-gradient-to-bl hover:from-zinc-800 hover:to-zinc-700 hover:scale-102 py-3 px-6 rounded-lg flex items-center justify-center gap-2 transition-all duration-300 ease-in-out"
             >
               <FiPlus size={20} /> Create New Character
@@ -130,20 +185,50 @@ export default function Dashboard() {
           )}
 
           {/* Your Characters Section */}
-          {characters.length > 0 ? (
+          {showSkeletons ? (
             <div className="mb-8">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {characters.map((character) => (
-                  <CharacterCard
-                    key={character.id}
-                    character={character}
-                    showPublicStatus={character.UserId === Number(user?.id)}
-                  />
-                ))}
+                <div className="contents animate-fadeIn">
+                  {renderSkeletonCards(6)}
+                </div>
+              </div>
+            </div>
+          ) : characters.length > 0 ? (
+            <div
+              className={`mb-8 transition-opacity duration-300 ${
+                isContentVisible ? "opacity-100" : "opacity-0"
+              }`}
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {sortedCharacters.map((character) => {
+                  const characterId = String(character.id);
+                  const accessResult = checkCharacterAccess(
+                    characterId,
+                    subscriptionStatus.tier,
+                    userConversations,
+                    userCreatedCharacterIds
+                  );
+
+                  return (
+                    <CharacterCard
+                      key={character.id}
+                      character={character}
+                      showPublicStatus={
+                        character.UserId?.toString() === user?.id
+                      }
+                      isFreeTier={subscriptionStatus.tier === "free"}
+                      isLocked={accessResult.isLocked}
+                    />
+                  );
+                })}
               </div>
             </div>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center gap-2">
+            <div
+              className={`flex-1 flex flex-col items-center justify-center gap-2 transition-opacity duration-300 ${
+                isContentVisible ? "opacity-100" : "opacity-0"
+              }`}
+            >
               <p className="text-gray-400 text-center text-xl">
                 You don't have any characters yet
               </p>
@@ -152,7 +237,7 @@ export default function Dashboard() {
               </p>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setShowCharacterForm(true)}
+                  onClick={handleCreateCharacter}
                   className="bg-blue-700 hover:bg-blue-600 text-white py-3 px-6 rounded-lg flex items-center justify-center gap-2 mt-2 cursor-pointer"
                 >
                   <FiPlus size={20} /> Create Character
@@ -163,110 +248,6 @@ export default function Dashboard() {
                 >
                   Explore
                 </Link>
-              </div>
-            </div>
-          )}
-
-          {/* Character Creation Modal */}
-          {showCharacterForm && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4">
-              <div className="bg-gray-800 p-6 rounded-xl w-full max-w-md space-y-4">
-                <h2 className="text-xl font-bold">Create New Character</h2>
-
-                <input
-                  placeholder="Name"
-                  value={newCharacter.name}
-                  onChange={(e) =>
-                    setNewCharacter({ ...newCharacter, name: e.target.value })
-                  }
-                  className="w-full bg-gray-700 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-
-                <textarea
-                  placeholder="Description"
-                  value={newCharacter.description}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (value.length <= 120) {
-                      setNewCharacter({ ...newCharacter, description: value });
-                    }
-                  }}
-                  maxLength={120}
-                  className="w-full bg-gray-700 rounded-lg px-4 py-2 h-24 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <div className="text-sm text-gray-400 text-right">
-                  {newCharacter.description.length}/120 characters
-                </div>
-
-                <select
-                  value={newCharacter.model}
-                  onChange={(e) =>
-                    setNewCharacter({ ...newCharacter, model: e.target.value })
-                  }
-                  className="w-full bg-gray-700 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <optgroup label="OpenAI">
-                    {subscriptionStatus.tier === "pro" && (
-                      <option value="chatgpt-4o-latest">GPT-4o Latest</option>
-                    )}
-                    <option value="gpt-4o-mini">GPT-4o Mini</option>
-                  </optgroup>
-                  {subscriptionStatus.tier === "pro" && (
-                    <optgroup label="Anthropic">
-                      <option value="claude-3-5-sonnet-20241022">
-                        Claude 3.5 Sonnet
-                      </option>
-                      <option value="claude-3-5-haiku-20241022">
-                        Claude 3.5 Haiku
-                      </option>
-                    </optgroup>
-                  )}
-                </select>
-
-                <textarea
-                  placeholder="System Prompt"
-                  value={newCharacter.systemPrompt}
-                  onChange={(e) =>
-                    setNewCharacter({
-                      ...newCharacter,
-                      systemPrompt: e.target.value,
-                    })
-                  }
-                  className="w-full bg-gray-700 rounded-lg px-4 py-2 h-32 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-
-                <div className="flex items-center gap-2">
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={newCharacter.isPublic}
-                      onChange={(e) =>
-                        setNewCharacter({
-                          ...newCharacter,
-                          isPublic: e.target.checked,
-                        })
-                      }
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                    <span className="ml-2 text-gray-400">Public</span>
-                  </label>
-                </div>
-
-                <div className="flex gap-2 justify-end">
-                  <button
-                    onClick={() => setShowCharacterForm(false)}
-                    className="px-4 py-2 rounded-lg bg-gray-600 hover:bg-gray-500"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleCreateCharacter}
-                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500"
-                  >
-                    Create
-                  </button>
-                </div>
               </div>
             </div>
           )}

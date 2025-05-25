@@ -1,40 +1,22 @@
 // src/components/CharacterLayout.tsx
-import { useState, useEffect } from 'react';
-import { Outlet, useNavigate, useParams } from 'react-router-dom';
-import { FiArrowLeft, FiSettings, FiMenu, FiX } from 'react-icons/fi';
-import ConversationList from './ConversationList';
-import { useCharacter } from '../api/characters';
-import { useAuth } from '../contexts/AuthContext';
-import CharacterSettings from './CharacterSettings';
-import { getModelAlias } from './CharacterCard';
+import { useState, useEffect } from "react";
+import { Outlet, useNavigate, useParams } from "react-router-dom";
+import { FiArrowLeft, FiSettings, FiMenu, FiX } from "react-icons/fi";
+import ConversationList from "./ConversationList";
+import { useCharacter } from "../api/characters";
+import { useAuth } from "../contexts/AuthContext";
+import CharacterSettings from "./CharacterSettings";
+import { getModelAlias } from "./CharacterCard";
 
 export default function CharacterLayout() {
   const { characterId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { character } = useCharacter(characterId!);
-  const [tempConversationId, setTempConversationId] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
-  const isOwner = user?.id ? Number(user.id) === character?.UserId : false;
-
-  // Create temporary conversation when entering character page
-  useEffect(() => {
-    const createTempConversation = async () => {
-      try {
-        const tempId = `temp-${Date.now()}`;
-        setTempConversationId(tempId);
-        navigate(`/dashboard/characters/${characterId}/conversations/${tempId}`);
-      } catch (error) {
-        console.error('Error creating temporary conversation:', error);
-      }
-    };
-
-    if (!tempConversationId) {
-      createTempConversation();
-    }
-  }, [characterId]);
+  const isOwner = user?.id ? user.id === character?.UserId?.toString() : false;
 
   // Close sidebar by default on mobile
   useEffect(() => {
@@ -47,8 +29,8 @@ export default function CharacterLayout() {
     };
 
     handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   return (
@@ -64,25 +46,28 @@ export default function CharacterLayout() {
       )}
 
       {/* Conversation List Sidebar */}
-      <div className={`fixed md:static inset-y-0 left-0 w-72 bg-zinc-900 border-r border-zinc-700 flex flex-col transform transition-transform duration-300 ease-in-out ${
-        isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-      } md:translate-x-0 z-40`}>
+      <div
+        className={`fixed md:static inset-y-0 left-0 w-72 bg-zinc-900 border-r border-zinc-700 flex flex-col transform transition-transform duration-300 ease-in-out ${
+          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+        } md:translate-x-0 z-40`}
+      >
         <div className="p-4 border-b border-zinc-700">
           <div className="flex items-center justify-between mb-4">
             <button
-              onClick={() => navigate('/dashboard')}
+              onClick={() => navigate("/dashboard")}
               className="flex items-center gap-2 text-gray-300 hover:text-white"
             >
               <FiArrowLeft /> Back to Dashboard
             </button>
-            
           </div>
-          <div className='flex flex-row justify-between items-center'>
-          <div className='flex flex-col'>
-          <h2 className="text-lg font-semibold">{character?.name}</h2>
-          <p className="text-sm text-gray-400">{character?.model && getModelAlias(character.model)}</p>
-          </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-row justify-between items-center">
+            <div className="flex flex-col">
+              <h2 className="text-lg font-semibold">{character?.name}</h2>
+              <p className="text-sm text-gray-400">
+                {character?.model && getModelAlias(character.model)}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
               {isOwner && (
                 <button
                   onClick={() => setShowSettings(true)}
@@ -99,13 +84,13 @@ export default function CharacterLayout() {
                 <FiX size={20} />
               </button>
             </div>
-            </div>
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto minimal-dark-scrollbar">
           <ConversationList />
         </div>
       </div>
-      
+
       {/* Main Chat Area */}
       <div className="flex-1">
         <Outlet />
@@ -125,7 +110,7 @@ export default function CharacterLayout() {
 
       {/* Mobile Overlay */}
       {isSidebarOpen && (
-        <div 
+        <div
           className="md:hidden fixed inset-0 bg-black/50 z-30"
           onClick={() => setIsSidebarOpen(false)}
         />

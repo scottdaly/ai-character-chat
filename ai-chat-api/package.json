@@ -11,6 +11,7 @@
   "type": "commonjs",
   "description": "",
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@types/express-session": "^1.18.1",
     "bcrypt": "^5.1.1",
     "connect-sqlite3": "^0.9.15",
@@ -24,7 +25,8 @@
     "passport-google-oauth20": "^2.0.0",
     "sequelize": "^6.37.5",
     "sqlite3": "^5.1.7",
-    "stripe": "^17.6.0"
+    "stripe": "^17.6.0",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@types/sqlite3": "^3.1.11"

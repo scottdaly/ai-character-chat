@@ -1,8 +1,16 @@
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
-import { FiUpload, FiX } from "react-icons/fi";
+import {
+  FiUpload,
+  FiX,
+  FiEdit2,
+  FiCheck,
+  FiX as FiXIcon,
+  FiLoader,
+} from "react-icons/fi";
 import Navbar from "./Navbar";
 import RemoveProfilePictureModal from "./RemoveProfilePictureModal";
+import ConfirmUsernameChangeModal from "./ConfirmUsernameChangeModal";
 import Toast from "./Toast";
 
 export default function AccountSettings() {
@@ -13,6 +21,31 @@ export default function AccountSettings() {
     type: "success" | "error";
   } | null>(null);
   const [isRemoveModalOpen, setIsRemoveModalOpen] = useState(false);
+  const [isEditingUsername, setIsEditingUsername] = useState(false);
+  const [newUsername, setNewUsername] = useState("");
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [isCheckingUsername, setIsCheckingUsername] = useState(false);
+  const [usernameStatus, setUsernameStatus] = useState<{
+    available: boolean;
+    reason?: string;
+  } | null>(null);
+  const usernameInputRef = useRef<HTMLInputElement>(null);
+  const checkTimeoutRef = useRef<NodeJS.Timeout>();
+
+  // Generate a gradient background based on username (same as Navbar)
+  const getGradientBackground = (username: string) => {
+    const colors = [
+      "from-blue-500 to-purple-500",
+      "from-green-500 to-blue-500",
+      "from-purple-500 to-pink-500",
+      "from-yellow-500 to-red-500",
+      "from-pink-500 to-orange-500",
+    ];
+    const hash = username
+      .split("")
+      .reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return colors[hash % colors.length];
+  };
 
   const handleFileSelect = async (
     event: React.ChangeEvent<HTMLInputElement>
@@ -201,6 +234,120 @@ export default function AccountSettings() {
     }
   };
 
+  const checkUsernameAvailability = async (username: string) => {
+    if (!username.trim()) {
+      setUsernameStatus(null);
+      return;
+    }
+
+    if (username.trim() === user?.username) {
+      setUsernameStatus({ available: true });
+      return;
+    }
+
+    try {
+      setIsCheckingUsername(true);
+      const response = await apiFetch(
+        `/api/check-username/${encodeURIComponent(username.trim())}`
+      );
+      setUsernameStatus(response);
+    } catch (err) {
+      console.error("Failed to check username:", err);
+      setUsernameStatus(null);
+    } finally {
+      setIsCheckingUsername(false);
+    }
+  };
+
+  const handleUsernameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setNewUsername(value);
+
+    // Clear any existing timeout
+    if (checkTimeoutRef.current) {
+      clearTimeout(checkTimeoutRef.current);
+    }
+
+    // Set a new timeout to check username availability
+    checkTimeoutRef.current = setTimeout(() => {
+      checkUsernameAvailability(value);
+    }, 500); // Wait 500ms after user stops typing
+  };
+
+  const handleUsernameEdit = () => {
+    setNewUsername(user?.username || "");
+    setUsernameStatus({ available: true });
+    setIsEditingUsername(true);
+    // Focus the input after it's rendered
+    setTimeout(() => usernameInputRef.current?.focus(), 0);
+  };
+
+  const handleUsernameSave = () => {
+    if (!newUsername.trim()) {
+      setToast({ message: "Username cannot be empty", type: "error" });
+      return;
+    }
+
+    if (newUsername.trim() === user?.username) {
+      setIsEditingUsername(false);
+      return;
+    }
+
+    if (!usernameStatus?.available) {
+      setToast({
+        message: usernameStatus?.reason || "Please choose a different username",
+        type: "error",
+      });
+      return;
+    }
+
+    setIsConfirmModalOpen(true);
+  };
+
+  const handleUsernameConfirm = async () => {
+    try {
+      setIsLoading(true);
+      const response = await apiFetch("/api/profile/username", {
+        method: "PUT",
+        body: JSON.stringify({ username: newUsername.trim() }),
+      });
+
+      if (response.success && user) {
+        updateUser({
+          ...user,
+          username: newUsername.trim(),
+        });
+        setToast({ message: "Username updated successfully", type: "success" });
+        setIsEditingUsername(false);
+        setIsConfirmModalOpen(false);
+      }
+    } catch (err) {
+      setToast({
+        message:
+          err instanceof Error ? err.message : "Failed to update username",
+        type: "error",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUsernameCancel = () => {
+    setIsEditingUsername(false);
+    setNewUsername("");
+    setUsernameStatus(null);
+    setIsConfirmModalOpen(false);
+  };
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (checkTimeoutRef.current) {
+        clearTimeout(checkTimeoutRef.current);
+      }
+    };
+  }, []);
+
   return (
     <div className="flex-1 flex flex-col h-full bg-zinc-900 overflow-y-auto dark-scrollbar">
       {/* Header */}
@@ -212,7 +359,7 @@ export default function AccountSettings() {
           <h1 className="text-3xl font-bold mb-8">Account Settings</h1>
 
           {/* Profile Picture Section */}
-          <div className="bg-zinc-800 rounded-lg p-6 mb-6">
+          <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-6 mb-6">
             <h2 className="text-xl font-semibold mb-4">Profile Picture</h2>
 
             <div className="flex items-center gap-6">
@@ -233,10 +380,25 @@ export default function AccountSettings() {
                     </button>
                   </div>
                 ) : (
-                  <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-2xl font-medium">
-                    {user?.username?.[0].toUpperCase() ||
-                      user?.email?.[0].toUpperCase() ||
-                      "U"}
+                  <div
+                    className={`w-24 h-24 rounded-full bg-gradient-to-br ${getGradientBackground(
+                      user?.username || user?.email || "user"
+                    )} flex items-center justify-center text-white text-2xl font-medium relative`}
+                  >
+                    <div className="absolute inset-0 opacity-30 mix-blend-overlay">
+                      <svg className="w-full h-full">
+                        <filter id="noise">
+                          <feTurbulence
+                            type="fractalNoise"
+                            baseFrequency="0.65"
+                            numOctaves="3"
+                            stitchTiles="stitch"
+                          />
+                          <feColorMatrix type="saturate" values="0" />
+                        </filter>
+                        <rect width="100%" height="100%" filter="url(#noise)" />
+                      </svg>
+                    </div>
                   </div>
                 )}
               </div>
@@ -259,20 +421,78 @@ export default function AccountSettings() {
           </div>
 
           {/* Account Information */}
-          <div className="bg-zinc-800 rounded-lg p-6">
+          <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-6">
             <h2 className="text-xl font-semibold mb-4">Account Information</h2>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-400 mb-1">
-                  Display Name
-                </label>
-                <p className="text-lg">{user?.displayName}</p>
-              </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">
                   Username
                 </label>
-                <p className="text-lg">@{user?.username}</p>
+                {isEditingUsername ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        ref={usernameInputRef}
+                        type="text"
+                        value={newUsername}
+                        onChange={handleUsernameChange}
+                        className={`flex-1 bg-zinc-700 text-white px-3 py-2 rounded-lg focus:outline-none focus:ring-2 ${
+                          usernameStatus?.available
+                            ? "focus:ring-zinc-300"
+                            : usernameStatus?.available === false
+                            ? "focus:ring-red-500"
+                            : "focus:ring-blue-500"
+                        }`}
+                        placeholder="Enter new username"
+                        disabled={isLoading}
+                      />
+                      <button
+                        onClick={handleUsernameSave}
+                        disabled={isLoading || !usernameStatus?.available}
+                        className="px-3 py-2 bg-white text-black rounded-lg disabled:opacity-50"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={handleUsernameCancel}
+                        disabled={isLoading}
+                        className="px-3 py-2 h-full bg-zinc-700 text-white rounded-lg disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    {isCheckingUsername ? (
+                      <div className="flex items-center gap-2 text-sm text-gray-400">
+                        <FiLoader className="w-4 h-4 animate-spin" />
+                        Checking availability...
+                      </div>
+                    ) : (
+                      usernameStatus && (
+                        <div
+                          className={`text-sm ${
+                            usernameStatus.available
+                              ? "text-green-500"
+                              : "text-red-500"
+                          }`}
+                        >
+                          {usernameStatus.available
+                            ? "Username is available"
+                            : usernameStatus.reason}
+                        </div>
+                      )
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <p className="text-lg">@{user?.username}</p>
+                    <button
+                      onClick={handleUsernameEdit}
+                      className="p-1 text-gray-400 hover:text-white"
+                    >
+                      <FiEdit2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm text-gray-400 mb-1">
@@ -289,6 +509,14 @@ export default function AccountSettings() {
         isOpen={isRemoveModalOpen}
         onClose={() => setIsRemoveModalOpen(false)}
         onConfirm={removeProfilePicture}
+      />
+
+      <ConfirmUsernameChangeModal
+        isOpen={isConfirmModalOpen}
+        onClose={() => setIsConfirmModalOpen(false)}
+        onConfirm={handleUsernameConfirm}
+        newUsername={newUsername.trim()}
+        currentUsername={user?.username || ""}
       />
 
       {toast && (
