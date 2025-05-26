@@ -52,15 +52,17 @@ export default function ConversationList() {
   };
 
   return (
-    <div className="p-4 ">
-      <button
-        onClick={handleNewConversation}
-        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg mb-4 flex items-center justify-center gap-2"
-      >
-        <FiPlus /> New Conversation
-      </button>
+    <div className="py-4 px-2">
+      <div className="px-2">
+        <button
+          onClick={handleNewConversation}
+          className="w-full cursor-pointer border border-zinc-700 hover:bg-zinc-800 text-white py-2 px-4 rounded-lg mb-4 flex items-center justify-center gap-2 transition-colors duration-300 ease-in-out"
+        >
+          <FiPlus /> New Conversation
+        </button>
+      </div>
 
-      <div className="space-y-2">
+      <div className="space-y-1">
         {conversations.map((convo) => {
           const isSelected = location.pathname.endsWith(
             `/conversations/${convo.id}`
@@ -69,18 +71,14 @@ export default function ConversationList() {
             <Link
               key={convo.id}
               to={`/dashboard/characters/${characterId}/conversations/${convo.id}`}
-              className={`block p-3 border rounded-lg transition-colors relative group
-                ${
-                  isSelected
-                    ? "bg-gray-800 border-gray-400"
-                    : "hover:bg-zinc-800 border-zinc-700"
-                }`}
+              className={`block px-2 py-1 rounded-lg transition-colors relative group
+                ${isSelected ? "bg-zinc-700/60" : "hover:bg-zinc-800"}`}
             >
-              <h4 className="font-medium">{convo.title}</h4>
-              <p className="text-sm text-gray-300 line-clamp-2">
+              <h4 className="font-medium text-sm">{convo.title}</h4>
+              <p className="text-xs text-zinc-400 line-clamp-1">
                 {convo.lastMessage || "New conversation"}
               </p>
-              <div className="flex items-center justify-between mt-2 text-xs text-gray-400">
+              {/* <div className="flex items-center justify-between mt-2 text-xs text-gray-400">
                 <span>{new Date(convo.createdAt).toLocaleDateString()}</span>
                 <button
                   onClick={(e) => handleDelete(e, convo.id)}
@@ -89,7 +87,7 @@ export default function ConversationList() {
                 >
                   <FiTrash2 />
                 </button>
-              </div>
+              </div> */}
             </Link>
           );
         })}

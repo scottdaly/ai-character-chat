@@ -2,33 +2,14 @@ import { useAuth } from "../contexts/AuthContext";
 import { useUserConversations } from "../api/useUserConversations";
 import { useCharacters } from "../api/characters";
 import { checkCharacterAccess } from "../api/characterAccess";
-import { useState, useEffect } from "react";
 
 export default function CharacterAccessDebug() {
-  const { user, apiFetch } = useAuth();
+  const { user, subscriptionTier } = useAuth();
   const {
     conversations: userConversations,
     isLoading: isLoadingConversations,
   } = useUserConversations();
   const { characters, isLoading: isLoadingCharacters } = useCharacters();
-  const [subscriptionStatus, setSubscriptionStatus] = useState<{
-    tier: string;
-  }>({ tier: "free" });
-
-  useEffect(() => {
-    const fetchSubscriptionStatus = async () => {
-      try {
-        const status = await apiFetch("/api/subscription-status");
-        setSubscriptionStatus(status);
-      } catch (error) {
-        console.error("Failed to fetch subscription status:", error);
-      }
-    };
-
-    if (user) {
-      fetchSubscriptionStatus();
-    }
-  }, [apiFetch, user]);
 
   if (isLoadingConversations || isLoadingCharacters) {
     return <div>Loading...</div>;
@@ -39,73 +20,51 @@ export default function CharacterAccessDebug() {
     .map((char) => String(char.id));
 
   return (
-    <div className="p-4 bg-zinc-800 rounded-lg">
-      <h3 className="text-lg font-semibold mb-4">Character Access Debug</h3>
+    <div className="p-6 bg-zinc-900 text-white">
+      <h2 className="text-2xl font-bold mb-4">Character Access Debug</h2>
 
-      <div className="mb-4">
-        <p>
-          <strong>Subscription Tier:</strong> {subscriptionStatus.tier}
-        </p>
-        <p>
-          <strong>Total Characters:</strong> {characters.length}
-        </p>
-        <p>
-          <strong>User Conversations:</strong> {userConversations.length}
-        </p>
-        <p>
-          <strong>User Created Characters:</strong>{" "}
-          {userCreatedCharacterIds.length}
-        </p>
+      <div className="mb-6">
+        <h3 className="text-lg font-semibold mb-2">User Info</h3>
+        <p>User ID: {user?.id}</p>
+        <p>Subscription Tier: {subscriptionTier}</p>
       </div>
 
-      <div className="mb-4">
-        <h4 className="font-semibold mb-2">
-          Conversation History (by recency):
-        </h4>
-        {userConversations
-          .sort(
-            (a, b) =>
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-          )
-          .map((conv, index) => (
-            <div key={conv.id} className="text-sm">
-              {index + 1}. Character {conv.characterId} -{" "}
-              {new Date(conv.createdAt).toLocaleDateString()}
+      <div className="mb-6">
+        <h3 className="text-lg font-semibold mb-2">User Conversations</h3>
+        <p>Total conversations: {userConversations.length}</p>
+        <div className="space-y-2">
+          {userConversations.map((conv) => (
+            <div key={conv.id} className="bg-zinc-800 p-2 rounded">
+              <p>Character ID: {conv.CharacterId}</p>
+              <p>Character Name: {conv.Character?.name}</p>
+              <p>Created: {new Date(conv.createdAt).toLocaleString()}</p>
             </div>
           ))}
+        </div>
       </div>
 
-      <div>
-        <h4 className="font-semibold mb-2">Character Access Status:</h4>
+      <div className="mb-6">
+        <h3 className="text-lg font-semibold mb-2">Character Access Results</h3>
         {characters.map((character) => {
           const characterId = String(character.id);
           const accessResult = checkCharacterAccess(
             characterId,
-            subscriptionStatus.tier,
+            subscriptionTier,
             userConversations,
             userCreatedCharacterIds
           );
 
           return (
-            <div
-              key={character.id}
-              className="text-sm mb-2 p-2 border border-zinc-600 rounded"
-            >
-              <div>
-                <strong>{character.name}</strong> (ID: {characterId})
-              </div>
-              <div>
-                Access: {accessResult.hasAccess ? "✅ Allowed" : "❌ Locked"}
-              </div>
-              <div>
-                Created by user:{" "}
+            <div key={character.id} className="bg-zinc-800 p-4 rounded mb-2">
+              <h4 className="font-semibold">{character.name}</h4>
+              <p>Character ID: {characterId}</p>
+              <p>Has Access: {accessResult.hasAccess ? "✅" : "❌"}</p>
+              <p>Is Locked: {accessResult.isLocked ? "🔒" : "🔓"}</p>
+              {accessResult.reason && <p>Reason: {accessResult.reason}</p>}
+              <p>
+                User Created:{" "}
                 {userCreatedCharacterIds.includes(characterId) ? "Yes" : "No"}
-              </div>
-              {accessResult.reason && (
-                <div className="text-red-400">
-                  Reason: {accessResult.reason}
-                </div>
-              )}
+              </p>
             </div>
           );
         })}

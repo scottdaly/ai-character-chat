@@ -1,4 +1,12 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+  useMemo,
+} from "react";
 
 interface User {
   id: string;
@@ -7,129 +15,274 @@ interface User {
   username: string | null;
   isAdmin: boolean;
   profilePicture?: string | null;
+  subscriptionTier?: string;
+  subscriptionStatus?: string;
+  subscriptionEndsAt?: string | null;
 }
 
 interface AuthContextType {
   user: User | null;
+  isLoading: boolean;
+  subscriptionTier: string;
+  isLoadingSubscription: boolean;
   login: (token?: string) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
   apiFetch: <T = any>(url: string, options?: RequestInit) => Promise<T>;
   updateUser: (user: User) => void;
+  refreshSubscriptionStatus: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType>({
   user: null,
+  isLoading: true,
+  subscriptionTier: "free",
+  isLoadingSubscription: true,
   login: () => {},
-  logout: () => {},
+  logout: async () => {},
   apiFetch: async () => {
     throw new Error("apiFetch not implemented");
   },
   updateUser: () => {},
+  refreshSubscriptionStatus: async () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(
-    localStorage.getItem("token")
-  );
   const [isLoading, setIsLoading] = useState(true);
+  const [subscriptionTier, setSubscriptionTier] = useState<string>("free");
+  const [isLoadingSubscription, setIsLoadingSubscription] = useState(true);
+  const lastUserIdRef = useRef<string | null>(null);
 
-  const apiFetch = async <T = any,>(url: string, options: RequestInit = {}) => {
-    const token = localStorage.getItem("token");
-    const headers = {
-      "Content-Type": "application/json",
-      ...options.headers,
-      ...(token && { Authorization: `Bearer ${token}` }),
-    };
-
-    const response = await fetch(`${import.meta.env.VITE_API_URL}${url}`, {
-      ...options,
-      headers,
-    });
-
-    // Check if the response is JSON
-    const contentType = response.headers.get("content-type");
-    if (!contentType || !contentType.includes("application/json")) {
-      throw new Error("Server error: Expected JSON response");
-    }
-
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || "API request failed");
-    }
-
-    return data as T;
-  };
-
-  const login = (token?: string) => {
-    if (token) {
-      localStorage.setItem("token", token);
-      setToken(token);
-    }
-    window.location.href = `${import.meta.env.VITE_API_URL}/auth/google`;
-  };
-
-  const logout = async () => {
-    try {
-      await apiFetch("/api/logout", { method: "POST" });
-    } catch (error) {
-      console.error("Logout failed:", error);
-    } finally {
-      localStorage.removeItem("token");
-      setUser(null);
-      setToken(null);
-      window.location.href = "/";
-    }
-  };
-
-  const updateUser = (updatedUser: User) => {
-    setUser(updatedUser);
-  };
-
+  // Load cached subscription status from localStorage
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        setIsLoading(true);
-        const token = localStorage.getItem("token");
+    const cachedTier = localStorage.getItem("subscriptionTier");
+    if (cachedTier) {
+      setSubscriptionTier(cachedTier);
+      setIsLoadingSubscription(false);
+    } else {
+      // If no cached tier, set to false so we don't show loading indefinitely
+      setIsLoadingSubscription(false);
+    }
+  }, []);
 
-        if (!token) {
-          setUser(null);
-          return;
-        }
+  const apiFetch = useCallback(
+    async <T = any,>(url: string, options: RequestInit = {}): Promise<T> => {
+      const token = localStorage.getItem("token");
+      const headers = {
+        "Content-Type": "application/json",
+        ...options.headers,
+        ...(token && { Authorization: `Bearer ${token}` }),
+      };
 
-        const userData = await apiFetch("/api/me");
+      const response = await fetch(`${import.meta.env.VITE_API_URL}${url}`, {
+        ...options,
+        headers,
+      });
 
-        setUser({
-          id: userData.id,
-          displayName: userData.displayName,
-          email: userData.email,
-          username: userData.username,
-          isAdmin: userData.isAdmin,
-          profilePicture: userData.profilePicture,
-        });
-      } catch (error) {
-        console.error("Auth check failed:", error);
-        if (error instanceof Error && error.message === "Unauthorized") {
+      // Check if the response is JSON
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("Server error: Expected JSON response");
+      }
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        // Handle unauthorized errors by clearing auth state
+        if (response.status === 401) {
           localStorage.removeItem("token");
           setUser(null);
+          throw new Error("Unauthorized");
         }
+        throw new Error(
+          data.error || `API request failed with status ${response.status}`
+        );
+      }
+
+      return data as T;
+    },
+    []
+  );
+
+  // Fetch subscription status when user changes
+  useEffect(() => {
+    const fetchSubscriptionForUser = async () => {
+      if (!user) {
+        setSubscriptionTier("free");
+        setIsLoadingSubscription(false);
+        localStorage.removeItem("subscriptionTier");
+        lastUserIdRef.current = null;
+        return;
+      }
+
+      // Only fetch if we haven't already fetched for this user
+      if (lastUserIdRef.current === user.id) {
+        return;
+      }
+
+      try {
+        setIsLoadingSubscription(true);
+        const status = await apiFetch("/api/subscription-status");
+        setSubscriptionTier(status.tier);
+
+        // Cache the subscription tier
+        localStorage.setItem("subscriptionTier", status.tier);
+
+        // Update user object with subscription data
+        setUser((prev) =>
+          prev
+            ? {
+                ...prev,
+                subscriptionTier: status.tier,
+                subscriptionStatus: status.status,
+                subscriptionEndsAt: status.currentPeriodEnd,
+              }
+            : null
+        );
+
+        lastUserIdRef.current = user.id;
+      } catch (error) {
+        console.error(
+          "[AuthContext] Failed to fetch subscription status:",
+          error
+        );
+        setSubscriptionTier("free");
+        localStorage.setItem("subscriptionTier", "free");
+        lastUserIdRef.current = null;
       } finally {
-        setIsLoading(false);
+        setIsLoadingSubscription(false);
       }
     };
 
-    checkAuth();
+    if (!isLoading && user) {
+      fetchSubscriptionForUser();
+    } else if (!isLoading && !user) {
+      setSubscriptionTier("free");
+      setIsLoadingSubscription(false);
+      localStorage.removeItem("subscriptionTier");
+      lastUserIdRef.current = null;
+    }
+  }, [user?.id, isLoading]);
 
-    // Add an event listener to check auth when the window regains focus
-    const handleFocus = () => {
-      // checkAuth(); // Commented out to prevent re-fetch on focus
-    };
-
-    // window.addEventListener("focus", handleFocus); // Commented out
-    return () => {
-      // window.removeEventListener("focus", handleFocus); // Commented out
-    };
+  const login = useCallback((token?: string) => {
+    if (token) {
+      localStorage.setItem("token", token);
+      // Trigger auth check after setting token
+      checkAuth();
+    } else {
+      // Redirect to Google OAuth
+      window.location.href = `${import.meta.env.VITE_API_URL}/auth/google`;
+    }
   }, []);
+
+  const logout = useCallback(async (): Promise<void> => {
+    try {
+      await apiFetch("/api/logout", { method: "POST" });
+    } catch (error) {
+      console.error("Logout API call failed:", error);
+      // Continue with logout even if API call fails
+    } finally {
+      localStorage.removeItem("token");
+      setUser(null);
+      window.location.href = "/";
+    }
+  }, [apiFetch]);
+
+  const updateUser = useCallback((updatedUser: User) => {
+    setUser(updatedUser);
+  }, []);
+
+  const checkAuth = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const token = localStorage.getItem("token");
+
+      if (!token) {
+        setUser(null);
+        return;
+      }
+
+      const userData = await apiFetch<User>("/api/me");
+      setUser(userData);
+    } catch (error) {
+      console.error("Auth check failed:", error);
+      // Clear invalid token
+      localStorage.removeItem("token");
+      setUser(null);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [apiFetch]);
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
+
+  const refreshSubscriptionStatus = useCallback(async () => {
+    if (!user) {
+      setSubscriptionTier("free");
+      setIsLoadingSubscription(false);
+      localStorage.removeItem("subscriptionTier");
+      lastUserIdRef.current = null;
+      return;
+    }
+
+    try {
+      setIsLoadingSubscription(true);
+      const status = await apiFetch("/api/subscription-status");
+      setSubscriptionTier(status.tier);
+
+      // Cache the subscription tier
+      localStorage.setItem("subscriptionTier", status.tier);
+
+      // Update user object with subscription data
+      setUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              subscriptionTier: status.tier,
+              subscriptionStatus: status.status,
+              subscriptionEndsAt: status.currentPeriodEnd,
+            }
+          : null
+      );
+
+      lastUserIdRef.current = user.id;
+    } catch (error) {
+      console.error("Failed to fetch subscription status:", error);
+      setSubscriptionTier("free");
+      localStorage.setItem("subscriptionTier", "free");
+      lastUserIdRef.current = null;
+    } finally {
+      setIsLoadingSubscription(false);
+    }
+  }, [user, apiFetch]);
+
+  // Memoize the context value to prevent unnecessary re-renders
+  const contextValue = useMemo(
+    () => ({
+      user,
+      isLoading,
+      subscriptionTier,
+      isLoadingSubscription,
+      login,
+      logout,
+      apiFetch,
+      updateUser,
+      refreshSubscriptionStatus,
+    }),
+    [
+      user,
+      isLoading,
+      subscriptionTier,
+      isLoadingSubscription,
+      login,
+      logout,
+      apiFetch,
+      updateUser,
+      refreshSubscriptionStatus,
+    ]
+  );
 
   if (isLoading) {
     return (
@@ -140,20 +293,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        login,
-        logout,
-        apiFetch,
-        updateUser,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+    <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>
   );
 }
 
 export function useAuth() {
-  return useContext(AuthContext);
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
 }

@@ -34,7 +34,7 @@ export default function CharacterLayout() {
   }, []);
 
   return (
-    <div className="flex h-screen bg-zinc-900 w-full">
+    <div className="flex h-screen bg-zinc-900/40 w-full">
       {/* Mobile Sidebar Toggle Button */}
       {!isSidebarOpen && (
         <button
@@ -47,15 +47,15 @@ export default function CharacterLayout() {
 
       {/* Conversation List Sidebar */}
       <div
-        className={`fixed md:static inset-y-0 left-0 w-72 bg-zinc-900 border-r border-zinc-700 flex flex-col transform transition-transform duration-300 ease-in-out ${
+        className={`fixed md:static inset-y-0 left-0 w-72  border-r border-zinc-700 flex flex-col transform transition-transform duration-300 ease-in-out ${
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         } md:translate-x-0 z-40`}
       >
-        <div className="p-4 border-b border-zinc-700">
+        <div className="p-4">
           <div className="flex items-center justify-between mb-4">
             <button
               onClick={() => navigate("/dashboard")}
-              className="flex items-center gap-2 text-gray-300 hover:text-white"
+              className="flex cursor-pointer items-center gap-2 text-zinc-400 hover:text-zinc-100 transition-colors duration-300 ease-in-out"
             >
               <FiArrowLeft /> Back to Dashboard
             </button>

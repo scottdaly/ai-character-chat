@@ -1,20 +1,19 @@
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
-import {
-  FiUpload,
-  FiX,
-  FiEdit2,
-  FiCheck,
-  FiX as FiXIcon,
-  FiLoader,
-} from "react-icons/fi";
+import { FiUpload, FiX, FiEdit2, FiLoader } from "react-icons/fi";
 import Navbar from "./Navbar";
 import RemoveProfilePictureModal from "./RemoveProfilePictureModal";
 import ConfirmUsernameChangeModal from "./ConfirmUsernameChangeModal";
 import Toast from "./Toast";
 
 export default function AccountSettings() {
-  const { user, apiFetch, updateUser } = useAuth();
+  const {
+    user,
+    apiFetch,
+    updateUser,
+    subscriptionTier,
+    isLoadingSubscription,
+  } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [toast, setToast] = useState<{
     message: string;
@@ -113,11 +112,7 @@ export default function AccountSettings() {
 
             console.log("9. Setting success toast");
             // Use a callback to ensure we're working with the latest state
-            setToast((prevToast) => {
-              console.log(
-                "Setting toast with message:",
-                "Profile picture updated successfully"
-              );
+            setToast(() => {
               return {
                 message: "Profile picture updated successfully",
                 type: "success",
@@ -351,7 +346,10 @@ export default function AccountSettings() {
   return (
     <div className="flex-1 flex flex-col h-full bg-zinc-900 overflow-y-auto dark-scrollbar">
       {/* Header */}
-      <Navbar />
+      <Navbar
+        subscriptionTier={subscriptionTier}
+        isLoadingSubscription={isLoadingSubscription}
+      />
 
       {/* Content */}
       <div className="flex-1 p-4">

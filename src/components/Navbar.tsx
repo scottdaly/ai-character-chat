@@ -5,13 +5,13 @@ import { FiSettings, FiLogOut, FiMenu, FiX } from "react-icons/fi";
 import LogoutModal from "./LogoutModal";
 
 interface NavbarProps {
-  showUpgradeButton?: boolean;
   subscriptionTier?: string;
+  isLoadingSubscription?: boolean;
 }
 
 export default function Navbar({
-  showUpgradeButton = true,
   subscriptionTier = "free",
+  isLoadingSubscription = false,
 }: NavbarProps) {
   const { logout, user } = useAuth();
   const path = useLocation();
@@ -141,8 +141,12 @@ export default function Navbar({
 
         {/* Right side - subscription badge and avatar */}
         <div className="flex h-full items-center justify-end gap-3 w-[25%]">
-          {subscriptionTier === "pro" ? (
-            <span className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded-full text-xs whitespace-nowrap">
+          {isLoadingSubscription ? (
+            <div className="px-3 py-1 bg-zinc-700 rounded-full text-xs whitespace-nowrap animate-pulse">
+              <div className="w-16 h-3 bg-zinc-600 rounded"></div>
+            </div>
+          ) : subscriptionTier === "pro" ? (
+            <span className="px-2 py-1 bg-blue-500/20 text-blue-400 border border-blue-400/40 rounded-full text-xs whitespace-nowrap">
               Pro Plan
             </span>
           ) : (

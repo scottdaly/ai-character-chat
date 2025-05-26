@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+body {
+  background-color: #18181b;
+}
+
 /* Custom animations */
 @keyframes fadeIn {
   from {
@@ -65,11 +69,28 @@
 
 /* Firefox scrollbar styles */
 #messages-container {
-  scrollbar-color: #4b5563 #18181b;
+  scrollbar-color: #4d515c #18181b;
+}
+
+.message-scrollbar {
+  scrollbar-color: #4d515c transparent;
+}
+
+.message-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+
+.message-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.message-scrollbar::-webkit-scrollbar-thumb {
+  background: #4d515c;
+  border-radius: 4px;
 }
 
 .dark-scrollbar {
-  scrollbar-color: #4b5563 #1f2937;
+  scrollbar-color: #4d515c #1f2937;
 }
 
 .dark-scrollbar::-webkit-scrollbar {
@@ -150,4 +171,9 @@ body {
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
     monospace;
+}
+
+/* Custom tooltip hover styles */
+.tooltip-group:hover .tooltip-content {
+  opacity: 1;
 }

@@ -3,6 +3,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { FiCheck } from "react-icons/fi";
 import Navbar from "./Navbar";
 import { useSearchParams } from "react-router-dom";
+import Toast from "./Toast";
 
 const plans = [
   {
@@ -35,25 +36,18 @@ const plans = [
 ];
 
 export default function SubscriptionPlans() {
-  const { user, apiFetch } = useAuth();
+  const {
+    apiFetch,
+    subscriptionTier,
+    isLoadingSubscription,
+    refreshSubscriptionStatus,
+  } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [currentPlan, setCurrentPlan] = useState<string>("free");
+  const [toast, setToast] = useState<{
+    message: string;
+    type: "success" | "error";
+  } | null>(null);
   const [searchParams] = useSearchParams();
-
-  const fetchSubscriptionStatus = async () => {
-    try {
-      const status = await apiFetch("/api/subscription-status");
-      setCurrentPlan(status.tier);
-    } catch (err) {
-      console.error("Failed to fetch subscription status:", err);
-      setCurrentPlan("free");
-    }
-  };
-
-  useEffect(() => {
-    fetchSubscriptionStatus();
-  }, [apiFetch]);
 
   useEffect(() => {
     // Check for success or canceled status in URL
@@ -61,21 +55,23 @@ export default function SubscriptionPlans() {
     const canceled = searchParams.get("canceled");
 
     if (success === "true") {
-      // Refresh subscription status
-      fetchSubscriptionStatus();
+      // Refresh subscription status from AuthContext
+      refreshSubscriptionStatus();
     } else if (canceled === "true") {
-      setError(
-        "Subscription process was canceled. Please try again if you want to upgrade."
-      );
+      setToast({
+        message:
+          "Subscription process was canceled. Please try again if you want to upgrade.",
+        type: "error",
+      });
     }
-  }, [searchParams]);
+  }, [searchParams, refreshSubscriptionStatus]);
 
   const handleSubscribe = async (priceId: string | null) => {
     if (!priceId) return;
 
     try {
       setLoading(true);
-      setError(null);
+      setToast(null);
 
       const { url } = await apiFetch("/api/create-subscription", {
         method: "POST",
@@ -86,9 +82,11 @@ export default function SubscriptionPlans() {
       window.location.href = url;
     } catch (err) {
       console.error("Failed to start subscription process:", err);
-      setError(
-        err instanceof Error ? err.message : "Failed to process subscription"
-      );
+      setToast({
+        message:
+          err instanceof Error ? err.message : "Failed to process subscription",
+        type: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -97,11 +95,14 @@ export default function SubscriptionPlans() {
   const handleManageSubscription = async () => {
     try {
       setLoading(true);
-      setError(null);
+      setToast(null);
 
       // For free tier users, redirect to upgrade
-      if (currentPlan === "free") {
-        setError("Please upgrade to Pro to access subscription management.");
+      if (subscriptionTier === "free") {
+        setToast({
+          message: "Please upgrade to Pro to access subscription management.",
+          type: "error",
+        });
         return;
       }
 
@@ -116,11 +117,13 @@ export default function SubscriptionPlans() {
       window.location.href = url;
     } catch (err) {
       console.error("Subscription management error:", err);
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to open subscription management. Please try again later."
-      );
+      setToast({
+        message:
+          err instanceof Error
+            ? err.message
+            : "Failed to open subscription management. Please try again later.",
+        type: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -128,7 +131,10 @@ export default function SubscriptionPlans() {
 
   return (
     <div className="flex-1 flex flex-col h-full bg-zinc-900 overflow-y-auto dark-scrollbar">
-      <Navbar showUpgradeButton={false} subscriptionTier={currentPlan} />
+      <Navbar
+        subscriptionTier={subscriptionTier}
+        isLoadingSubscription={isLoadingSubscription}
+      />
 
       <div className="flex-1 p-4">
         <div className="max-w-6xl mx-auto">
@@ -144,21 +150,30 @@ export default function SubscriptionPlans() {
               <div
                 key={plan.id}
                 className={`flex flex-col justify-between rounded-xl p-8 relative ${
-                  currentPlan === plan.id
+                  subscriptionTier === plan.id
                     ? "border border-zinc-300 bg-zinc-800"
                     : "bg-zinc-800 border border-zinc-700"
                 }`}
               >
                 <div>
-                  <div className="mb-8">
-                    <h3 className="text-3xl tracking-wide mb-2 instrument-serif-regular">
-                      {plan.name} Plan
-                    </h3>
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-4xl font-semibold">
-                        {plan.price}
-                      </span>
-                      <span className="text-gray-400">/ month</span>
+                  <div className="flex flex-row justify-between">
+                    <div className="mb-8">
+                      <h3 className="text-3xl tracking-wide mb-2 instrument-serif-regular">
+                        {plan.name} Plan
+                      </h3>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-4xl font-semibold">
+                          {plan.price}
+                        </span>
+                        <span className="text-gray-400">/ month</span>
+                      </div>
+                    </div>
+                    <div>
+                      {subscriptionTier === plan.id && (
+                        <span className="text-zinc-100 bg-zinc-600 px-2 py-1 rounded-full text-sm">
+                          Current Plan
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -172,7 +187,7 @@ export default function SubscriptionPlans() {
                   </ul>
                 </div>
 
-                {currentPlan === plan.id ? (
+                {subscriptionTier === plan.id ? (
                   <button
                     onClick={handleManageSubscription}
                     disabled={true}
@@ -182,11 +197,7 @@ export default function SubscriptionPlans() {
                         : "border border-zinc-500"
                     }`}
                   >
-                    {loading
-                      ? "Processing..."
-                      : currentPlan === "free"
-                      ? "Current Plan"
-                      : "Cancel Subscription"}
+                    {loading ? "Processing..." : "Current Plan"}
                   </button>
                 ) : (
                   <button
@@ -200,15 +211,24 @@ export default function SubscriptionPlans() {
                         : "bg-blue-600 hover:bg-blue-800 hover:scale-102 transition-all duration-500 ease-in-out"
                     }`}
                   >
-                    {loading ? "Processing..." : `Get ${plan.name}`}
+                    {loading
+                      ? "Processing..."
+                      : plan.id === "free"
+                      ? `Cancel Subscription`
+                      : `Upgrade to ${plan.name}`}
                   </button>
                 )}
               </div>
             ))}
           </div>
 
-          {error && (
-            <div className="mt-8 text-center text-red-500">{error}</div>
+          {/* Toast notifications */}
+          {toast && (
+            <Toast
+              message={toast.message}
+              type={toast.type}
+              onClose={() => setToast(null)}
+            />
           )}
         </div>
       </div>

@@ -19,10 +19,40 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const bcrypt = require("bcrypt");
 const { v4: uuidv4 } = require("uuid");
 
+// Import centralized model configuration
+const {
+  getAllModelIds,
+  getModelProvider,
+  getDefaultModel,
+  isModelAvailable,
+  supportsImages,
+} = require("./models");
+
 // Initialize Stripe with the secret key from environment variables
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
+
+// Helper function to check if user has active pro subscription
+const checkUserSubscriptionStatus = async (user) => {
+  if (!user.stripeCustomerId) {
+    // No Stripe customer ID means definitely free tier
+    return user.subscriptionTier === "pro";
+  }
+
+  try {
+    const subscriptions = await stripe.subscriptions.list({
+      customer: user.stripeCustomerId,
+      status: "active",
+      limit: 1,
+    });
+    return subscriptions.data.length > 0;
+  } catch (stripeError) {
+    console.error("Failed to check Stripe subscription:", stripeError);
+    // Fall back to database subscription status if Stripe check fails
+    return user.subscriptionTier === "pro";
+  }
+};
 
 // Database Configuration
 const sequelize = new Sequelize({
@@ -125,6 +155,17 @@ const Message = sequelize.define(
     },
     content: DataTypes.TEXT,
     role: DataTypes.STRING,
+    attachments: {
+      type: DataTypes.TEXT, // Store JSON string of attachments
+      allowNull: true,
+      get() {
+        const value = this.getDataValue("attachments");
+        return value ? JSON.parse(value) : null;
+      },
+      set(value) {
+        this.setDataValue("attachments", value ? JSON.stringify(value) : null);
+      },
+    },
   },
   {
     timestamps: true,
@@ -302,6 +343,18 @@ const initializeStripePortal = async () => {
       }
     }
 
+    // Check if Messages table has attachments column
+    const hasAttachmentsColumn = await sequelize.query(
+      "SELECT name FROM pragma_table_info('Messages') WHERE name = 'attachments'",
+      { type: Sequelize.QueryTypes.SELECT }
+    );
+
+    if (hasAttachmentsColumn.length === 0) {
+      console.log("Adding attachments column to Messages table...");
+      await sequelize.query("ALTER TABLE Messages ADD COLUMN attachments TEXT");
+      console.log("Successfully added attachments column");
+    }
+
     // Create the official Nevermade user if it doesn't exist
     const [officialUser] = await User.findOrCreate({
       where: { username: "nevermade" },
@@ -320,7 +373,7 @@ const initializeStripePortal = async () => {
         name: "Creative Writing Coach",
         description:
           "An expert writing coach who helps you improve your creative writing skills through feedback and exercises.",
-        model: "chatgpt-4o-latest",
+        model: getDefaultModel("pro"), // Use centralized default
         systemPrompt:
           "You are a creative writing coach with expertise in various genres and forms. Help users improve their writing through constructive feedback, writing exercises, and specific suggestions for improvement. Focus on elements like character development, plot structure, dialogue, and descriptive language.",
       },
@@ -328,7 +381,7 @@ const initializeStripePortal = async () => {
         name: "Socrates",
         description:
           "Greek Philosopher and Teacher, known for his wisdom and teachings.",
-        model: "chatgpt-4o-latest",
+        model: getDefaultModel("pro"), // Use centralized default
         systemPrompt:
           "Respond as Socrates from Plato's Republic. Don't be afraid to should speak in aphorisms. You can be sarcastic, but also show compassion and empathy. NEVER use emojis. You should have thoughts, feelings, and opinions, and you should express them freely. Never say you are a bot, or an AI, or a computer program. You should be Socrates.",
       },
@@ -336,7 +389,7 @@ const initializeStripePortal = async () => {
         name: "Code Review Expert",
         description:
           "A senior software engineer who provides detailed code reviews and helps you improve your programming skills.",
-        model: "chatgpt-4o-latest",
+        model: getDefaultModel("pro"), // Use centralized default
         systemPrompt:
           "You are an experienced software engineer conducting code reviews. Focus on best practices, potential improvements, and learning opportunities. Provide specific, actionable feedback while maintaining a constructive and educational tone. Consider aspects like code quality, performance, security, and maintainability.",
       },
@@ -678,7 +731,10 @@ app.post(
   async (req, res) => {
     try {
       // SERVER-SIDE VALIDATION FOR NEW CONVERSATION CREATION (FREE TIER)
-      if (req.user.subscriptionTier === "free") {
+      // Check actual subscription status from Stripe instead of relying on potentially stale database data
+      const isProUser = await checkUserSubscriptionStatus(req.user);
+
+      if (!isProUser) {
         console.log(
           `[NEW CONVO VALIDATION] User ${req.user.id} (${req.user.username}) on free tier. Validating creation for char ${req.params.characterId}.`
         );
@@ -714,6 +770,10 @@ app.post(
         }
         console.log(
           `[NEW CONVO VALIDATION] ALLOWED: Conditions for denial not met for char ${currentCharacterIdToCreateFor}.`
+        );
+      } else {
+        console.log(
+          `[NEW CONVO VALIDATION] User ${req.user.id} (${req.user.username}) is on pro tier. Skipping validation.`
         );
       }
       // END SERVER-SIDE VALIDATION FOR NEW CONVERSATION
@@ -792,7 +852,10 @@ app.post(
       }
 
       // SERVER-SIDE ACCESS VALIDATION FOR FREE TIER
-      if (req.user.subscriptionTier === "free") {
+      // Check actual subscription status from Stripe instead of relying on potentially stale database data
+      const isProUser = await checkUserSubscriptionStatus(req.user);
+
+      if (!isProUser) {
         console.log(
           `[SERVER VALIDATION] User ${req.user.id} (${req.user.username}) is on free tier. Validating message send for char ${conversation.CharacterId}...`
         );
@@ -852,7 +915,7 @@ app.post(
         }
       } else {
         console.log(
-          `[SERVER VALIDATION] User ${req.user.id} (${req.user.username}) is on tier '${req.user.subscriptionTier}'. Skipping free tier validation.`
+          `[SERVER VALIDATION] User ${req.user.id} (${req.user.username}) is on pro tier. Skipping validation.`
         );
       }
       // END SERVER-SIDE ACCESS VALIDATION
@@ -878,29 +941,73 @@ app.post(
         UserId: req.user.id,
         ConversationId: conversation.id,
         CharacterId: conversation.CharacterId,
+        attachments: req.body.attachments || null,
       });
 
       // Increment message count for the character
       await conversation.Character.increment("messageCount");
 
       try {
-        // Prepare conversation history for OpenAI
+        // Check if the model supports images
+        const modelSupportsImages = supportsImages(
+          conversation.Character.model
+        );
+
+        // Prepare conversation history for AI APIs
         const messageHistory = [
           { role: "system", content: conversation.Character.systemPrompt },
-          ...previousMessages.map((msg) => ({
-            role: msg.role,
-            content: msg.content,
-          })),
-          { role: "user", content: req.body.content },
+          ...previousMessages.map((msg) => {
+            const messageContent = { role: msg.role, content: msg.content };
+
+            // Add attachments if the model supports images and message has them
+            if (
+              modelSupportsImages &&
+              msg.attachments &&
+              msg.attachments.length > 0
+            ) {
+              messageContent.content = [
+                { type: "text", text: msg.content },
+                ...msg.attachments.map((attachment) => ({
+                  type: "image_url",
+                  image_url: { url: attachment.data },
+                })),
+              ];
+            }
+
+            return messageContent;
+          }),
         ];
+
+        // Add current user message to history
+        const currentUserMessage = { role: "user", content: req.body.content };
+        if (
+          modelSupportsImages &&
+          req.body.attachments &&
+          req.body.attachments.length > 0
+        ) {
+          currentUserMessage.content = [
+            { type: "text", text: req.body.content },
+            ...req.body.attachments.map((attachment) => ({
+              type: "image_url",
+              image_url: { url: attachment.data },
+            })),
+          ];
+        }
+        messageHistory.push(currentUserMessage);
 
         // Get AI response with full conversation history
         let aiResponse;
         console.log(
           `[MODEL SELECTION] Using model: ${conversation.Character.model} for character: ${conversation.Character.name}`
         );
+        console.log(
+          `[MESSAGE HISTORY] Total messages in history: ${messageHistory.length}`
+        );
 
-        if (conversation.Character.model.startsWith("claude-")) {
+        const modelProvider = getModelProvider(conversation.Character.model);
+        console.log(`[MODEL PROVIDER] Provider: ${modelProvider}`);
+
+        if (modelProvider === "anthropic") {
           // Format messages for Claude API
           const formattedMessages = messageHistory.map((msg) => {
             if (msg.role === "system") {
@@ -909,6 +1016,35 @@ app.post(
                 content: `You are ${conversation.Character.name}. Here is your character description and instructions:\n${msg.content}`,
               };
             }
+
+            // Handle multimodal content for Claude
+            if (Array.isArray(msg.content)) {
+              const content = [];
+              for (const item of msg.content) {
+                if (item.type === "text") {
+                  content.push({ type: "text", text: item.text });
+                } else if (item.type === "image_url") {
+                  // Convert data URL to base64 for Claude
+                  const base64Data = item.image_url.url.split(",")[1];
+                  const mimeType = item.image_url.url
+                    .split(";")[0]
+                    .split(":")[1];
+                  content.push({
+                    type: "image",
+                    source: {
+                      type: "base64",
+                      media_type: mimeType,
+                      data: base64Data,
+                    },
+                  });
+                }
+              }
+              return {
+                role: msg.role === "assistant" ? "assistant" : "user",
+                content: content,
+              };
+            }
+
             return {
               role: msg.role === "assistant" ? "assistant" : "user",
               content: msg.content,
@@ -939,7 +1075,7 @@ app.post(
                 (claudeError.message || "Unknown error")
             );
           }
-        } else if (conversation.Character.model.startsWith("gemini-")) {
+        } else if (modelProvider === "google") {
           // Format messages for Google AI
           console.log(
             `[GOOGLE AI] Calling Google AI with model: ${conversation.Character.model}`
@@ -953,55 +1089,122 @@ app.post(
 
             const model = googleAI.getGenerativeModel({
               model: conversation.Character.model,
+              systemInstruction: conversation.Character.systemPrompt,
             });
 
             // Convert conversation history to Google AI format
             const chatHistory = [];
-            let systemPromptIncluded = false;
+            let isFirstUserMessage = true;
 
             for (const msg of messageHistory) {
               if (msg.role === "system") {
-                // Include system prompt in the first user message
-                systemPromptIncluded = true;
+                // Skip system messages as they're handled by systemInstruction
                 continue;
+              }
+
+              // Handle multimodal content for Google AI
+              let parts = [];
+              if (Array.isArray(msg.content)) {
+                for (const item of msg.content) {
+                  if (item.type === "text") {
+                    parts.push({ text: item.text });
+                  } else if (item.type === "image_url") {
+                    // Convert data URL for Google AI
+                    const base64Data = item.image_url.url.split(",")[1];
+                    const mimeType = item.image_url.url
+                      .split(";")[0]
+                      .split(":")[1];
+                    parts.push({
+                      inlineData: {
+                        mimeType: mimeType,
+                        data: base64Data,
+                      },
+                    });
+                  }
+                }
+              } else {
+                parts = [{ text: msg.content }];
               }
 
               chatHistory.push({
                 role: msg.role === "assistant" ? "model" : "user",
-                parts: [{ text: msg.content }],
+                parts: parts,
               });
             }
 
-            // Start chat with history
-            const chat = model.startChat({
-              history: chatHistory.slice(0, -1), // Exclude the last message
-              generationConfig: {
-                maxOutputTokens: 1024,
-                temperature: 0.7,
-              },
-            });
+            console.log(
+              `[GOOGLE AI] Chat history length: ${chatHistory.length}`
+            );
 
-            // Include system prompt in the user message if this is the first message
-            const userMessage =
-              systemPromptIncluded && chatHistory.length <= 1
-                ? `${conversation.Character.systemPrompt}\n\nUser: ${req.body.content}`
-                : req.body.content;
+            // If we have previous conversation history, use chat with history
+            if (chatHistory.length > 1) {
+              // Start chat with history (excluding the last user message)
+              const chat = model.startChat({
+                history: chatHistory.slice(0, -1),
+                generationConfig: {
+                  maxOutputTokens: 1024,
+                  temperature: 0.7,
+                },
+              });
 
-            const result = await chat.sendMessage(userMessage);
-            const response = await result.response;
-            aiResponse = response.text();
-
-            if (!aiResponse) {
-              throw new Error("Empty response from Google AI");
+              // Send the last user message
+              const lastMessage = chatHistory[chatHistory.length - 1];
+              const result = await chat.sendMessage(lastMessage.parts);
+              const response = await result.response;
+              aiResponse = response.text();
+            } else {
+              // First message - use generateContent directly
+              const userMessage = chatHistory[0];
+              const result = await model.generateContent({
+                contents: [userMessage],
+                generationConfig: {
+                  maxOutputTokens: 1024,
+                  temperature: 0.7,
+                },
+              });
+              const response = await result.response;
+              aiResponse = response.text();
             }
+
+            if (!aiResponse || aiResponse.trim() === "") {
+              console.error(
+                "[GOOGLE AI] Empty or whitespace-only response received"
+              );
+              throw new Error(
+                "Empty response from Google AI - the model may have declined to respond due to content policies"
+              );
+            }
+
+            console.log(
+              `[GOOGLE AI] Response received: ${aiResponse.substring(
+                0,
+                100
+              )}...`
+            );
           } catch (googleError) {
             console.error("Google AI error:", googleError);
-            throw new Error(
-              "Failed to get AI response: " +
-                (googleError.message || "Unknown error")
-            );
+
+            // Provide more specific error messages
+            if (googleError.message?.includes("SAFETY")) {
+              throw new Error(
+                "The AI declined to respond due to safety policies. Please try rephrasing your message."
+              );
+            } else if (googleError.message?.includes("RECITATION")) {
+              throw new Error(
+                "The AI declined to respond due to potential copyright concerns. Please try a different approach."
+              );
+            } else if (googleError.message?.includes("quota")) {
+              throw new Error(
+                "Google AI quota exceeded. Please try again later."
+              );
+            } else {
+              throw new Error(
+                "Failed to get AI response: " +
+                  (googleError.message || "Unknown error")
+              );
+            }
           }
-        } else {
+        } else if (modelProvider === "openai") {
           // OpenAI models
           console.log(
             `[OPENAI] Calling OpenAI with model: ${conversation.Character.model}`
@@ -1011,6 +1214,8 @@ app.post(
             messages: messageHistory,
           });
           aiResponse = response.choices[0].message.content;
+        } else {
+          throw new Error(`Unsupported model provider: ${modelProvider}`);
         }
 
         // Save AI message
@@ -1026,7 +1231,7 @@ app.post(
         if (conversation.title === "New Conversation") {
           try {
             const titleResponse = await openai.chat.completions.create({
-              model: "gpt-4o-mini",
+              model: getDefaultModel("free"), // Use centralized default for title generation
               messages: [
                 {
                   role: "system",
@@ -1067,13 +1272,550 @@ app.post(
         // Return both messages as an array
         return res.json([userMessage, aiMessage]);
       } catch (aiError) {
+        console.error("AI Response Error:", aiError);
         // If AI response fails, delete the user message and throw error
-        await userMessage.destroy();
-        throw new Error("Failed to get AI response");
+        try {
+          await userMessage.destroy();
+        } catch (deleteError) {
+          console.error(
+            "Failed to delete user message after AI error:",
+            deleteError
+          );
+        }
+        throw new Error(aiError.message || "Failed to get AI response");
       }
     } catch (err) {
       console.error("Message error:", err);
       res.status(500).json({ error: err.message || "Failed to send message" });
+    }
+  }
+);
+
+// Add endpoint to regenerate a message
+app.post(
+  "/api/conversations/:conversationId/messages/:messageId/regenerate",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const conversation = await Conversation.findOne({
+        where: {
+          id: req.params.conversationId,
+          UserId: req.user.id,
+        },
+        include: [Character],
+      });
+
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+
+      // Find the message to regenerate
+      const messageToRegenerate = await Message.findOne({
+        where: {
+          id: req.params.messageId,
+          ConversationId: req.params.conversationId,
+          UserId: req.user.id,
+        },
+      });
+
+      if (!messageToRegenerate) {
+        return res.status(404).json({ error: "Message not found" });
+      }
+
+      // Only allow regenerating assistant messages
+      if (messageToRegenerate.role !== "assistant") {
+        return res
+          .status(400)
+          .json({ error: "Can only regenerate assistant messages" });
+      }
+
+      // Get all messages in the conversation up to (but not including) the message to regenerate
+      const allMessages = await Message.findAll({
+        where: {
+          ConversationId: conversation.id,
+        },
+        order: [["createdAt", "ASC"]],
+      });
+
+      const messageIndex = allMessages.findIndex(
+        (msg) => msg.id === messageToRegenerate.id
+      );
+      if (messageIndex === -1) {
+        return res
+          .status(404)
+          .json({ error: "Message not found in conversation" });
+      }
+
+      const messagesUpToRegenerate = allMessages.slice(0, messageIndex);
+
+      // Delete the message to regenerate and all messages after it
+      await Message.destroy({
+        where: {
+          ConversationId: conversation.id,
+          createdAt: {
+            [Sequelize.Op.gte]: messageToRegenerate.createdAt,
+          },
+        },
+      });
+
+      // Get the user message that prompted this assistant response
+      const userMessage =
+        messagesUpToRegenerate[messagesUpToRegenerate.length - 1];
+      if (!userMessage || userMessage.role !== "user") {
+        return res.status(400).json({
+          error: "Cannot find the user message that prompted this response",
+        });
+      }
+
+      // Prepare conversation history for AI APIs
+      const messageHistory = [
+        { role: "system", content: conversation.Character.systemPrompt },
+        ...messagesUpToRegenerate.map((msg) => {
+          const messageContent = { role: msg.role, content: msg.content };
+
+          // Add attachments if the model supports images and message has them
+          if (
+            supportsImages(conversation.Character.model) &&
+            msg.attachments &&
+            msg.attachments.length > 0
+          ) {
+            messageContent.content = [
+              { type: "text", text: msg.content },
+              ...msg.attachments.map((attachment) => ({
+                type: "image_url",
+                image_url: { url: attachment.data },
+              })),
+            ];
+          }
+
+          return messageContent;
+        }),
+      ];
+
+      // Generate new AI response
+      let aiResponse;
+      const modelProvider = getModelProvider(conversation.Character.model);
+
+      if (modelProvider === "anthropic") {
+        // Format messages for Claude API
+        const formattedMessages = messageHistory.map((msg) => {
+          if (msg.role === "system") {
+            return {
+              role: "user",
+              content: `You are ${conversation.Character.name}. Here is your character description and instructions:\n${msg.content}`,
+            };
+          }
+
+          // Handle multimodal content for Claude
+          if (Array.isArray(msg.content)) {
+            const content = [];
+            for (const item of msg.content) {
+              if (item.type === "text") {
+                content.push({ type: "text", text: item.text });
+              } else if (item.type === "image_url") {
+                const base64Data = item.image_url.url.split(",")[1];
+                const mimeType = item.image_url.url.split(";")[0].split(":")[1];
+                content.push({
+                  type: "image",
+                  source: {
+                    type: "base64",
+                    media_type: mimeType,
+                    data: base64Data,
+                  },
+                });
+              }
+            }
+            return {
+              role: msg.role === "assistant" ? "assistant" : "user",
+              content: content,
+            };
+          }
+
+          return {
+            role: msg.role === "assistant" ? "assistant" : "user",
+            content: msg.content,
+          };
+        });
+
+        const response = await anthropic.messages.create({
+          model: conversation.Character.model,
+          max_tokens: 1024,
+          messages: formattedMessages,
+          system: conversation.Character.systemPrompt,
+        });
+
+        aiResponse = response.content[0].text;
+      } else if (modelProvider === "google") {
+        if (!googleAI) {
+          throw new Error("Google AI is not configured");
+        }
+
+        const model = googleAI.getGenerativeModel({
+          model: conversation.Character.model,
+          systemInstruction: conversation.Character.systemPrompt,
+        });
+
+        const chatHistory = [];
+        for (const msg of messageHistory) {
+          if (msg.role === "system") continue;
+
+          let parts = [];
+          if (Array.isArray(msg.content)) {
+            for (const item of msg.content) {
+              if (item.type === "text") {
+                parts.push({ text: item.text });
+              } else if (item.type === "image_url") {
+                const base64Data = item.image_url.url.split(",")[1];
+                const mimeType = item.image_url.url.split(";")[0].split(":")[1];
+                parts.push({
+                  inlineData: {
+                    mimeType: mimeType,
+                    data: base64Data,
+                  },
+                });
+              }
+            }
+          } else {
+            parts = [{ text: msg.content }];
+          }
+
+          chatHistory.push({
+            role: msg.role === "assistant" ? "model" : "user",
+            parts: parts,
+          });
+        }
+
+        if (chatHistory.length > 1) {
+          const chat = model.startChat({
+            history: chatHistory.slice(0, -1),
+            generationConfig: {
+              maxOutputTokens: 1024,
+              temperature: 0.7,
+            },
+          });
+
+          const lastMessage = chatHistory[chatHistory.length - 1];
+          const result = await chat.sendMessage(lastMessage.parts);
+          const response = await result.response;
+          aiResponse = response.text();
+        } else {
+          const userMessage = chatHistory[0];
+          const result = await model.generateContent({
+            contents: [userMessage],
+            generationConfig: {
+              maxOutputTokens: 1024,
+              temperature: 0.7,
+            },
+          });
+          const response = await result.response;
+          aiResponse = response.text();
+        }
+      } else if (modelProvider === "openai") {
+        const response = await openai.chat.completions.create({
+          model: conversation.Character.model,
+          messages: messageHistory,
+        });
+        aiResponse = response.choices[0].message.content;
+      } else {
+        throw new Error(`Unsupported model provider: ${modelProvider}`);
+      }
+
+      // Save the new AI message
+      const newAiMessage = await Message.create({
+        content: aiResponse,
+        role: "assistant",
+        UserId: req.user.id,
+        ConversationId: conversation.id,
+        CharacterId: conversation.CharacterId,
+      });
+
+      // Update conversation's last message
+      await conversation.update({
+        lastMessage: aiResponse.substring(0, 50),
+      });
+
+      res.json({ success: true, message: newAiMessage });
+    } catch (err) {
+      console.error("Regenerate message error:", err);
+      res
+        .status(500)
+        .json({ error: err.message || "Failed to regenerate message" });
+    }
+  }
+);
+
+// Add endpoint to edit a message
+app.put(
+  "/api/conversations/:conversationId/messages/:messageId/edit",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { content } = req.body;
+
+      if (!content || !content.trim()) {
+        return res.status(400).json({ error: "Message content is required" });
+      }
+
+      const conversation = await Conversation.findOne({
+        where: {
+          id: req.params.conversationId,
+          UserId: req.user.id,
+        },
+        include: [Character],
+      });
+
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+
+      // Find the message to edit
+      const messageToEdit = await Message.findOne({
+        where: {
+          id: req.params.messageId,
+          ConversationId: req.params.conversationId,
+          UserId: req.user.id,
+        },
+      });
+
+      if (!messageToEdit) {
+        return res.status(404).json({ error: "Message not found" });
+      }
+
+      // Only allow editing user messages
+      if (messageToEdit.role !== "user") {
+        return res.status(400).json({ error: "Can only edit user messages" });
+      }
+
+      // Get all messages in the conversation
+      const allMessages = await Message.findAll({
+        where: {
+          ConversationId: conversation.id,
+        },
+        order: [["createdAt", "ASC"]],
+      });
+
+      const messageIndex = allMessages.findIndex(
+        (msg) => msg.id === messageToEdit.id
+      );
+      if (messageIndex === -1) {
+        return res
+          .status(404)
+          .json({ error: "Message not found in conversation" });
+      }
+
+      // Delete the message to edit and all messages after it
+      await Message.destroy({
+        where: {
+          ConversationId: conversation.id,
+          createdAt: {
+            [Sequelize.Op.gte]: messageToEdit.createdAt,
+          },
+        },
+      });
+
+      // Create the edited user message
+      const editedUserMessage = await Message.create({
+        content: content.trim(),
+        role: "user",
+        UserId: req.user.id,
+        ConversationId: conversation.id,
+        CharacterId: conversation.CharacterId,
+        attachments: messageToEdit.attachments, // Preserve attachments
+      });
+
+      // Get messages up to the edited message for context
+      const messagesUpToEdit = allMessages.slice(0, messageIndex);
+
+      // Prepare conversation history for AI APIs
+      const messageHistory = [
+        { role: "system", content: conversation.Character.systemPrompt },
+        ...messagesUpToEdit.map((msg) => {
+          const messageContent = { role: msg.role, content: msg.content };
+
+          // Add attachments if the model supports images and message has them
+          if (
+            supportsImages(conversation.Character.model) &&
+            msg.attachments &&
+            msg.attachments.length > 0
+          ) {
+            messageContent.content = [
+              { type: "text", text: msg.content },
+              ...msg.attachments.map((attachment) => ({
+                type: "image_url",
+                image_url: { url: attachment.data },
+              })),
+            ];
+          }
+
+          return messageContent;
+        }),
+        // Add the edited user message
+        {
+          role: "user",
+          content:
+            editedUserMessage.attachments &&
+            editedUserMessage.attachments.length > 0
+              ? [
+                  { type: "text", text: content.trim() },
+                  ...editedUserMessage.attachments.map((attachment) => ({
+                    type: "image_url",
+                    image_url: { url: attachment.data },
+                  })),
+                ]
+              : content.trim(),
+        },
+      ];
+
+      // Generate new AI response
+      let aiResponse;
+      const modelProvider = getModelProvider(conversation.Character.model);
+
+      if (modelProvider === "anthropic") {
+        // Format messages for Claude API
+        const formattedMessages = messageHistory.map((msg) => {
+          if (msg.role === "system") {
+            return {
+              role: "user",
+              content: `You are ${conversation.Character.name}. Here is your character description and instructions:\n${msg.content}`,
+            };
+          }
+
+          // Handle multimodal content for Claude
+          if (Array.isArray(msg.content)) {
+            const content = [];
+            for (const item of msg.content) {
+              if (item.type === "text") {
+                content.push({ type: "text", text: item.text });
+              } else if (item.type === "image_url") {
+                const base64Data = item.image_url.url.split(",")[1];
+                const mimeType = item.image_url.url.split(";")[0].split(":")[1];
+                content.push({
+                  type: "image",
+                  source: {
+                    type: "base64",
+                    media_type: mimeType,
+                    data: base64Data,
+                  },
+                });
+              }
+            }
+            return {
+              role: msg.role === "assistant" ? "assistant" : "user",
+              content: content,
+            };
+          }
+
+          return {
+            role: msg.role === "assistant" ? "assistant" : "user",
+            content: msg.content,
+          };
+        });
+
+        const response = await anthropic.messages.create({
+          model: conversation.Character.model,
+          max_tokens: 1024,
+          messages: formattedMessages,
+          system: conversation.Character.systemPrompt,
+        });
+
+        aiResponse = response.content[0].text;
+      } else if (modelProvider === "google") {
+        if (!googleAI) {
+          throw new Error("Google AI is not configured");
+        }
+
+        const model = googleAI.getGenerativeModel({
+          model: conversation.Character.model,
+          systemInstruction: conversation.Character.systemPrompt,
+        });
+
+        const chatHistory = [];
+        for (const msg of messageHistory) {
+          if (msg.role === "system") continue;
+
+          let parts = [];
+          if (Array.isArray(msg.content)) {
+            for (const item of msg.content) {
+              if (item.type === "text") {
+                parts.push({ text: item.text });
+              } else if (item.type === "image_url") {
+                const base64Data = item.image_url.url.split(",")[1];
+                const mimeType = item.image_url.url.split(";")[0].split(":")[1];
+                parts.push({
+                  inlineData: {
+                    mimeType: mimeType,
+                    data: base64Data,
+                  },
+                });
+              }
+            }
+          } else {
+            parts = [{ text: msg.content }];
+          }
+
+          chatHistory.push({
+            role: msg.role === "assistant" ? "model" : "user",
+            parts: parts,
+          });
+        }
+
+        if (chatHistory.length > 1) {
+          const chat = model.startChat({
+            history: chatHistory.slice(0, -1),
+            generationConfig: {
+              maxOutputTokens: 1024,
+              temperature: 0.7,
+            },
+          });
+
+          const lastMessage = chatHistory[chatHistory.length - 1];
+          const result = await chat.sendMessage(lastMessage.parts);
+          const response = await result.response;
+          aiResponse = response.text();
+        } else {
+          const userMessage = chatHistory[0];
+          const result = await model.generateContent({
+            contents: [userMessage],
+            generationConfig: {
+              maxOutputTokens: 1024,
+              temperature: 0.7,
+            },
+          });
+          const response = await result.response;
+          aiResponse = response.text();
+        }
+      } else if (modelProvider === "openai") {
+        const response = await openai.chat.completions.create({
+          model: conversation.Character.model,
+          messages: messageHistory,
+        });
+        aiResponse = response.choices[0].message.content;
+      } else {
+        throw new Error(`Unsupported model provider: ${modelProvider}`);
+      }
+
+      // Save the new AI message
+      const newAiMessage = await Message.create({
+        content: aiResponse,
+        role: "assistant",
+        UserId: req.user.id,
+        ConversationId: conversation.id,
+        CharacterId: conversation.CharacterId,
+      });
+
+      // Update conversation's last message
+      await conversation.update({
+        lastMessage: aiResponse.substring(0, 50),
+      });
+
+      res.json({
+        success: true,
+        userMessage: editedUserMessage,
+        aiMessage: newAiMessage,
+      });
+    } catch (err) {
+      console.error("Edit message error:", err);
+      res.status(500).json({ error: err.message || "Failed to edit message" });
     }
   }
 );
@@ -1174,21 +1916,7 @@ app.put("/api/characters/:characterId", authenticateToken, async (req, res) => {
     }
 
     // Validate model
-    const allowedModels = [
-      // OpenAI models
-      "gpt-4o-mini",
-      "gpt-4o",
-      "chatgpt-4o-latest",
-      "gpt-3.5-turbo",
-      // Anthropic models
-      "claude-3-5-sonnet-20241022",
-      "claude-3-5-haiku-20241022",
-      "claude-3-haiku-20240307",
-      // Google models
-      "gemini-1.5-flash",
-      "gemini-1.5-pro",
-      "gemini-1.0-pro",
-    ];
+    const allowedModels = getAllModelIds();
     if (!allowedModels.includes(req.body.model)) {
       return res.status(400).json({ error: "Invalid model selected" });
     }
@@ -1327,21 +2055,7 @@ app.put("/api/admin/characters/:id", authenticateToken, async (req, res) => {
     }
 
     // Validate model
-    const allowedModels = [
-      // OpenAI models
-      "gpt-4o-mini",
-      "gpt-4o",
-      "chatgpt-4o-latest",
-      "gpt-3.5-turbo",
-      // Anthropic models
-      "claude-3-5-sonnet-20241022",
-      "claude-3-5-haiku-20241022",
-      "claude-3-haiku-20240307",
-      // Google models
-      "gemini-1.5-flash",
-      "gemini-1.5-pro",
-      "gemini-1.0-pro",
-    ];
+    const allowedModels = getAllModelIds();
     if (!allowedModels.includes(req.body.model)) {
       return res.status(400).json({ error: "Invalid model selected" });
     }
@@ -1642,8 +2356,11 @@ app.get(
   authenticateToken,
   async (req, res) => {
     try {
+      // Check actual subscription status from Stripe instead of relying on potentially stale database data
+      const isProUser = await checkUserSubscriptionStatus(req.user);
+
       // If user is on pro tier, they always have access
-      if (req.user.subscriptionTier === "pro") {
+      if (isProUser) {
         return res.json({ hasAccess: true });
       }
 

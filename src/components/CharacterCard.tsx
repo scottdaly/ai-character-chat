@@ -1,6 +1,7 @@
-import { Link, useNavigate } from "react-router-dom";
-import { FiGlobe, FiLock, FiUnlock } from "react-icons/fi";
+import { useNavigate } from "react-router-dom";
+import { FiGlobe, FiLock } from "react-icons/fi";
 import { Character } from "../types";
+import { getModelDisplayName } from "../config/models";
 
 interface CharacterCardProps {
   character: Character;
@@ -45,60 +46,7 @@ export function CharacterCardSkeleton() {
 }
 
 export const getModelAlias = (modelId: string): string => {
-  switch (modelId) {
-    // OpenAI models
-    case "chatgpt-4o-latest":
-      return "GPT-4o";
-    case "gpt-4o-mini":
-      return "GPT-4o Mini";
-    case "gpt-4o-mini-2024-07-18":
-      return "GPT-4o Mini";
-    case "gpt-4.1-nano-2025-04-14":
-      return "GPT-4.1 Nano";
-    case "gpt-4o-2024-08-06":
-      return "GPT-4o";
-    case "gpt-4.1-2025-04-14":
-      return "GPT-4.1";
-    case "o4-mini-2025-04-16":
-      return "o4 Mini";
-    case "gpt-3.5-turbo":
-      return "GPT-3.5 Turbo";
-
-    // Google models
-    case "gemini-2.0-flash-lite":
-      return "Gemini 2.0 Flash Lite";
-    case "gemini-2.0-flash":
-      return "Gemini 2.0 Flash";
-    case "gemini-2.5-flash-preview-05-20":
-      return "Gemini 2.5 Flash";
-    case "gemini-2.5-pro-preview-05-06":
-      return "Gemini 2.5 Pro";
-    case "gemini-1.5-flash":
-      return "Gemini 1.5 Flash";
-    case "gemini-1.5-pro":
-      return "Gemini 1.5 Pro";
-    case "gemini-1.0-pro":
-      return "Gemini 1.0 Pro";
-
-    // Anthropic models
-    case "claude-3-5-sonnet-20241022":
-      return "Claude Sonnet 3.5";
-    case "claude-3-5-haiku-20241022":
-      return "Claude Haiku 3.5";
-    case "claude-3-5-haiku-latest":
-      return "Claude 3.5 Haiku";
-    case "claude-3-7-sonnet-latest":
-      return "Claude 3.7 Sonnet";
-    case "claude-sonnet-4-20250514":
-      return "Claude 4 Sonnet";
-    case "claude-opus-4-20250514":
-      return "Claude 4 Opus";
-    case "claude-3-haiku-20240307":
-      return "Claude 3 Haiku";
-
-    default:
-      return modelId;
-  }
+  return getModelDisplayName(modelId);
 };
 
 export default function CharacterCard({

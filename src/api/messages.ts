@@ -1,7 +1,7 @@
 // src/api/messages.ts
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../contexts/AuthContext";
-import { Message } from "../types";
+import { Message, MessageAttachment } from "../types";
 import { useConversations } from "./conversations";
 import { UserConversationWithCharacter } from "./useUserConversations";
 import { checkCharacterAccess } from "./characterAccess";
@@ -134,7 +134,10 @@ export const useMessages = (
     return loadMessages(conversationId);
   }, [conversationId, loadMessages, isLoading]);
 
-  const sendMessage = async (content: string) => {
+  const sendMessage = async (
+    content: string,
+    attachments?: MessageAttachment[]
+  ) => {
     if (isAccessDenied) {
       console.log("[sendMessage] Access denied, not sending.");
       throw (
@@ -154,6 +157,7 @@ export const useMessages = (
         ConversationId: conversationId,
         CharacterId: characterId,
         UserId: "temp",
+        attachments,
       };
 
       // For new conversations, always create a new one
@@ -168,7 +172,7 @@ export const useMessages = (
           `/api/conversations/${newConversation.id}/messages`,
           {
             method: "POST",
-            body: JSON.stringify({ content }),
+            body: JSON.stringify({ content, attachments }),
           }
         );
 
@@ -194,7 +198,7 @@ export const useMessages = (
         `/api/conversations/${conversationId}/messages`,
         {
           method: "POST",
-          body: JSON.stringify({ content }),
+          body: JSON.stringify({ content, attachments }),
         }
       );
 

@@ -4,39 +4,20 @@ import { FiPlus } from "react-icons/fi";
 import { useAuth } from "../contexts/AuthContext";
 import { useCharacters } from "../api/characters";
 import CharacterCard, { CharacterCardSkeleton } from "./CharacterCard";
-import { Character } from "../types";
 import Navbar from "./Navbar";
 import { useUserConversations } from "../api/useUserConversations";
 import { checkCharacterAccess } from "../api/characterAccess";
 
 export default function Dashboard() {
-  const { user, apiFetch } = useAuth();
+  const { user, subscriptionTier, isLoadingSubscription } = useAuth();
   const navigate = useNavigate();
-  const { characters, createCharacter, isLoading, error } = useCharacters();
+  const { characters, isLoading, error } = useCharacters();
   const {
     conversations: userConversations,
     isLoading: isLoadingConversations,
   } = useUserConversations();
   const [showSkeletons, setShowSkeletons] = useState(false);
   const [isContentVisible, setIsContentVisible] = useState(false);
-  const [subscriptionStatus, setSubscriptionStatus] = useState<{
-    status: string;
-    tier: string;
-    currentPeriodEnd: string | null;
-  }>({ status: "free", tier: "free", currentPeriodEnd: null });
-
-  useEffect(() => {
-    const fetchSubscriptionStatus = async () => {
-      try {
-        const status = await apiFetch("/api/subscription-status");
-        setSubscriptionStatus(status);
-      } catch (error) {
-        console.error("Failed to fetch subscription status:", error);
-      }
-    };
-
-    fetchSubscriptionStatus();
-  }, [apiFetch]);
 
   // Handle loading states with smooth transitions
   useEffect(() => {
@@ -73,7 +54,7 @@ export default function Dashboard() {
 
   const handleCreateCharacter = () => {
     // Check character limit for free users
-    if (subscriptionStatus.tier === "free" && characters.length >= 3) {
+    if (subscriptionTier === "free" && characters.length >= 3) {
       navigate("/plans");
       return;
     }
@@ -106,16 +87,16 @@ export default function Dashboard() {
     const aId = String(a.id);
     const bId = String(b.id);
 
-    if (subscriptionStatus.tier === "free") {
+    if (subscriptionTier === "free") {
       const aAccess = checkCharacterAccess(
         aId,
-        subscriptionStatus.tier,
+        subscriptionTier,
         userConversations,
         userCreatedCharacterIds
       );
       const bAccess = checkCharacterAccess(
         bId,
-        subscriptionStatus.tier,
+        subscriptionTier,
         userConversations,
         userCreatedCharacterIds
       );
@@ -141,7 +122,10 @@ export default function Dashboard() {
   return (
     <div className="flex-1 flex flex-col h-full bg-zinc-900 overflow-y-auto dark-scrollbar">
       {/* Header */}
-      <Navbar subscriptionTier={subscriptionStatus.tier} />
+      <Navbar
+        subscriptionTier={subscriptionTier}
+        isLoadingSubscription={isLoadingSubscription}
+      />
 
       {/* Content */}
       <div className="flex-1 p-4">
@@ -161,28 +145,31 @@ export default function Dashboard() {
           </div>
 
           {/* Subscription Status */}
-          {subscriptionStatus.tier === "free" && characters.length >= 3 && (
-            <div className="bg-gradient-to-bl from-cyan-800 via-cyan-900/50 to-cyan-700 px-[1px] py-[1px] rounded-lg">
-              <div className="bg-zinc-900 rounded-lg">
-                <div className="flex flex-col md:flex-row md:justify-between p-4 rounded-lg bg-gradient-to-tr from-cyan-700/30 via-cyan-900/20 to-cyan-900/40 text-sky-200/80">
-                  <div className="flex flex-col mb-4 md:mb-0 gap-2">
-                    <p className="text-2xl leading-[1.25rem] text-zinc-100">
-                      You've reached the character limit for free accounts
-                    </p>
-                    <p className="text-md">
-                      Want to chat with more characters? Upgrade to create more
-                    </p>
+          {!isLoadingSubscription &&
+            subscriptionTier === "free" &&
+            characters.length >= 3 && (
+              <div className="bg-gradient-to-bl from-cyan-800 via-cyan-900/50 to-cyan-700 px-[1px] py-[1px] rounded-lg">
+                <div className="bg-zinc-900 rounded-lg">
+                  <div className="flex flex-col md:flex-row md:justify-between p-4 rounded-lg bg-gradient-to-tr from-cyan-700/30 via-cyan-900/20 to-cyan-900/40 text-sky-200/80">
+                    <div className="flex flex-col mb-4 md:mb-0 gap-2">
+                      <p className="text-2xl leading-[1.25rem] text-zinc-100">
+                        You've reached the character limit for free accounts
+                      </p>
+                      <p className="text-md">
+                        Want to chat with more characters? Upgrade to create
+                        more
+                      </p>
+                    </div>
+                    <Link
+                      to="/plans"
+                      className="text-white bg-gradient-to-bl from-cyan-800 to-cyan-900 my-auto hover:opacity-95 px-4 py-2 rounded-lg inline-block"
+                    >
+                      Upgrade to Pro
+                    </Link>
                   </div>
-                  <Link
-                    to="/plans"
-                    className="text-white bg-gradient-to-bl from-cyan-800 to-cyan-900 my-auto hover:opacity-95 px-4 py-2 rounded-lg inline-block"
-                  >
-                    Upgrade to Pro
-                  </Link>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
           {/* Your Characters Section */}
           {showSkeletons ? (
@@ -204,7 +191,7 @@ export default function Dashboard() {
                   const characterId = String(character.id);
                   const accessResult = checkCharacterAccess(
                     characterId,
-                    subscriptionStatus.tier,
+                    subscriptionTier,
                     userConversations,
                     userCreatedCharacterIds
                   );
@@ -216,7 +203,7 @@ export default function Dashboard() {
                       showPublicStatus={
                         character.UserId?.toString() === user?.id
                       }
-                      isFreeTier={subscriptionStatus.tier === "free"}
+                      isFreeTier={subscriptionTier === "free"}
                       isLocked={accessResult.isLocked}
                     />
                   );

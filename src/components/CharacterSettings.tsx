@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FiX } from "react-icons/fi";
 import { Character } from "../types";
 import { useAuth } from "../contexts/AuthContext";
+import { getModelGroups } from "../config/models";
 
 interface CharacterSettingsProps {
   character: Character;
@@ -14,7 +15,7 @@ export default function CharacterSettings({
   onClose,
   onSave,
 }: CharacterSettingsProps) {
-  const { apiFetch, user } = useAuth();
+  const { user, apiFetch } = useAuth();
   const [editedCharacter, setEditedCharacter] = useState({
     name: character.name,
     description: character.description,
@@ -24,6 +25,10 @@ export default function CharacterSettings({
   });
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // For admin users, show all models. For regular users, we'll assume pro tier for now
+  // In a real app, you'd want to pass the user's subscription tier as a prop
+  const modelGroups = getModelGroups(user?.isAdmin ? "pro" : "pro");
 
   const handleSave = async () => {
     try {
@@ -131,32 +136,15 @@ export default function CharacterSettings({
               backgroundSize: "1.5em 1.5em",
             }}
           >
-            <optgroup label="OpenAI">
-              <option value="gpt-4o-mini-2024-07-18">GPT-4o Mini</option>
-              <option value="gpt-4.1-nano-2025-04-14">GPT-4.1 Nano</option>
-              <option value="gpt-4o-2024-08-06">GPT-4o</option>
-              <option value="o4-mini-2025-04-16">o4 Mini</option>
-            </optgroup>
-            <optgroup label="Google">
-              <option value="gemini-2.0-flash-lite">
-                Gemini 2.0 Flash Lite
-              </option>
-              <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
-              <option value="gemini-2.5-flash-preview-05-20">
-                Gemini 2.5 Flash
-              </option>
-              <option value="gemini-2.5-pro-preview-05-06">
-                Gemini 2.5 Pro
-              </option>
-            </optgroup>
-            <optgroup label="Anthropic">
-              <option value="claude-3-7-sonnet-latest">
-                Claude 3.7 Sonnet
-              </option>
-              <option value="claude-3-5-haiku-latest">Claude 3.5 Haiku</option>
-              <option value="claude-sonnet-4-20250514">Claude 4 Sonnet</option>
-              <option value="claude-opus-4-20250514">Claude 4 Opus</option>
-            </optgroup>
+            {modelGroups.map((group) => (
+              <optgroup key={group.label} label={group.label}>
+                {group.models.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.displayName}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
           </select>
         </div>
 

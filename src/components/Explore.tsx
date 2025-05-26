@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import CharacterCard, { CharacterCardSkeleton } from "./CharacterCard";
 import { Character } from "../types";
 import { useAuth } from "../contexts/AuthContext";
@@ -7,7 +7,8 @@ import Navbar from "./Navbar";
 import { useCharacters } from "../api/characters";
 
 export default function Explore() {
-  const { user, login, apiFetch } = useAuth();
+  const { user, login, apiFetch, subscriptionTier, isLoadingSubscription } =
+    useAuth();
   const [characters, setCharacters] = useState<Character[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showSkeletons, setShowSkeletons] = useState(false);
@@ -16,12 +17,6 @@ export default function Explore() {
 
   const { characters: userCharacters, isLoading: isLoadingUserCharacters } =
     useCharacters();
-
-  const [subscriptionStatus, setSubscriptionStatus] = useState<{
-    status: string;
-    tier: string;
-  }>({ status: "free", tier: "free" });
-  const [isLoadingSubscription, setIsLoadingSubscription] = useState(true);
 
   useEffect(() => {
     const loadExploreCharacters = async () => {
@@ -63,28 +58,6 @@ export default function Explore() {
     loadExploreCharacters();
   }, [apiFetch]);
 
-  useEffect(() => {
-    const fetchSubscriptionStatus = async () => {
-      try {
-        setIsLoadingSubscription(true);
-        const status = await apiFetch("/api/subscription-status");
-        setSubscriptionStatus(status);
-      } catch (error) {
-        console.error("Failed to fetch subscription status:", error);
-        setSubscriptionStatus({ status: "free", tier: "free" });
-      } finally {
-        setIsLoadingSubscription(false);
-      }
-    };
-
-    if (user) {
-      fetchSubscriptionStatus();
-    } else {
-      setIsLoadingSubscription(false);
-      setSubscriptionStatus({ status: "free", tier: "free" });
-    }
-  }, [apiFetch, user]);
-
   // Separate official and public characters
   const officialCharacters = characters.filter((char) => char.User?.isOfficial);
   const publicCharacters = characters.filter((char) => !char.User?.isOfficial);
@@ -98,7 +71,7 @@ export default function Explore() {
     if (
       !isLoadingSubscription &&
       !isLoadingUserCharacters &&
-      subscriptionStatus.tier === "free" &&
+      subscriptionTier === "free" &&
       userCharacters.length >= 3 &&
       !userCharacters.some((uc) => uc.id === character.id)
     ) {
@@ -118,7 +91,10 @@ export default function Explore() {
 
   return (
     <div className="min-h-screen bg-zinc-900 text-gray-100">
-      <Navbar />
+      <Navbar
+        subscriptionTier={subscriptionTier}
+        isLoadingSubscription={isLoadingSubscription}
+      />
 
       <main className="container mx-auto max-w-6xl px-4 py-8 overflow-y-auto">
         <h1 className="text-3xl font-bold mb-8">Explore Characters</h1>

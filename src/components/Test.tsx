@@ -1,7 +1,6 @@
 import InfiniteCarousel from "./InfiniteCarousel";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FiMessageCircle } from "react-icons/fi";
 
 export default function Test() {
   const navigate = useNavigate();

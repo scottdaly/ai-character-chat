@@ -4,24 +4,20 @@ import { FiArrowLeft } from "react-icons/fi";
 import { useAuth } from "../contexts/AuthContext";
 import { useCharacters } from "../api/characters";
 import { Character } from "../types";
+import { getModelGroups, getDefaultModel } from "../config/models";
 import Navbar from "./Navbar";
 
 export default function CreateCharacter() {
-  const { user } = useAuth();
+  const { user, subscriptionTier, isLoadingSubscription } = useAuth();
   const navigate = useNavigate();
   const { createCharacter } = useCharacters();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [subscriptionStatus, setSubscriptionStatus] = useState<{
-    status: string;
-    tier: string;
-    currentPeriodEnd: string | null;
-  }>({ status: "free", tier: "free", currentPeriodEnd: null });
 
   const [newCharacter, setNewCharacter] = useState<Omit<Character, "id">>({
     name: "",
     description: "",
-    model: "gpt-4o-mini",
+    model: getDefaultModel((subscriptionTier as "free" | "pro") || "free"),
     systemPrompt: "",
     createdAt: new Date(),
     UserId: user?.id || "",
@@ -29,20 +25,17 @@ export default function CreateCharacter() {
     messageCount: 0,
   });
 
-  const { apiFetch } = useAuth();
-
+  // Update default model when subscription tier changes
   useEffect(() => {
-    const fetchSubscriptionStatus = async () => {
-      try {
-        const status = await apiFetch("/api/subscription-status");
-        setSubscriptionStatus(status);
-      } catch (error) {
-        console.error("Failed to fetch subscription status:", error);
-      }
-    };
+    setNewCharacter((prev) => ({
+      ...prev,
+      model: getDefaultModel((subscriptionTier as "free" | "pro") || "free"),
+    }));
+  }, [subscriptionTier]);
 
-    fetchSubscriptionStatus();
-  }, [apiFetch]);
+  const modelGroups = getModelGroups(
+    (subscriptionTier as "free" | "pro") || "free"
+  );
 
   const handleCreateCharacter = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,7 +68,10 @@ export default function CreateCharacter() {
 
   return (
     <div className="fixed inset-0 bg-zinc-900 text-gray-100 overflow-y-auto">
-      <Navbar subscriptionTier={subscriptionStatus.tier} />
+      <Navbar
+        subscriptionTier={subscriptionTier}
+        isLoadingSubscription={isLoadingSubscription}
+      />
 
       <div className="max-w-2xl mx-auto p-6">
         {/* Header */}
@@ -168,61 +164,21 @@ export default function CreateCharacter() {
                 backgroundSize: "1.5em 1.5em",
               }}
             >
-              <optgroup label="OpenAI (Free)">
-                <option value="gpt-4o-mini-2024-07-18">GPT-4o Mini</option>
-                <option value="gpt-4.1-nano-2025-04-14">GPT-4.1 Nano</option>
-              </optgroup>
-              <optgroup label="Google (Free)">
-                <option value="gemini-2.0-flash-lite">
-                  Gemini 2.0 Flash-Lite
-                </option>
-                <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
-              </optgroup>
-              {subscriptionStatus.tier === "pro" && (
-                <>
-                  <optgroup label="OpenAI (Pro)">
-                    <option value="gpt-4o-2024-08-06">GPT-4o (Advanced)</option>
-                    <option value="gpt-4.1-2025-04-14">GPT-4.1</option>
-                    <option value="o4-mini-2025-04-16">o4 Mini</option>
-                  </optgroup>
-                  <optgroup label="Google (Pro)">
-                    <option value="gemini-2.5-flash-preview-05-20">
-                      Gemini 2.5 Flash
+              {modelGroups.map((group) => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.models.map((model) => (
+                    <option
+                      key={model.id}
+                      value={model.id}
+                      disabled={model.id.startsWith("pro-placeholder")}
+                    >
+                      {model.displayName}
                     </option>
-                    <option value="gemini-2.5-pro-preview-05-06">
-                      Gemini 2.5 Pro
-                    </option>
-                  </optgroup>
-                  <optgroup label="Anthropic (Pro)">
-                    <option value="claude-opus-4-20250514">
-                      Claude 4 Opus (Most Capable)
-                    </option>
-                    <option value="claude-sonnet-4-20250514">
-                      Claude 4 Sonnet
-                    </option>
-                    <option value="claude-3-7-sonnet-latest">
-                      Claude 3.7 Sonnet
-                    </option>
-                    <option value="claude-3-5-haiku-latest">
-                      Claude 3.5 Haiku
-                    </option>
-                  </optgroup>
-                </>
-              )}
-              {subscriptionStatus.tier === "free" && (
-                <optgroup label="Upgrade to Pro for more models">
-                  <option disabled>GPT-4o (Pro)</option>
-                  <option disabled>GPT-4o Latest (Pro)</option>
-                  <option disabled>Gemini 2.5 Pro (Pro)</option>
-                  <option disabled>Gemini 2.5 Flash (Pro)</option>
-                  <option disabled>Claude 4 Opus (Pro)</option>
-                  <option disabled>Claude 4 Sonnet (Pro)</option>
-                  <option disabled>Claude 3.7 Sonnet (Pro)</option>
-                  <option disabled>Claude 3.5 Haiku (Pro)</option>
+                  ))}
                 </optgroup>
-              )}
+              ))}
             </select>
-            {subscriptionStatus.tier === "free" && (
+            {subscriptionTier === "free" && (
               <p className="text-sm text-zinc-500">
                 Free tier includes limited models.{" "}
                 <span

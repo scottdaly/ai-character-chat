@@ -9,7 +9,6 @@ import Home from "./components/Home";
 import Dashboard from "./components/Dashboard";
 import Explore from "./components/Explore";
 import CharacterLayout from "./components/CharacterLayout";
-import ConversationList from "./components/ConversationList";
 import ConversationChat from "./components/ConversationChat";
 import AuthSuccess from "./components/AuthSuccess";
 import SetupUsername from "./components/SetupUsername";
@@ -98,7 +97,7 @@ function ProtectedRoute() {
   }
 
   return (
-    <div className="flex h-screen bg-zinc-900 text-gray-100">
+    <div className="flex h-screen bg-zinc-800 text-gray-100">
       {user && !user.username && <UsernamePromptModal />}
       <Outlet />
     </div>

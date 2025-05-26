@@ -16,6 +16,13 @@ export interface Character {
   };
 }
 
+export interface MessageAttachment {
+  type: "image";
+  data: string; // base64 encoded data
+  mimeType: string; // e.g., "image/jpeg", "image/png"
+  name?: string; // optional filename
+}
+
 export interface Message {
   id: string;
   content: string;
@@ -24,6 +31,7 @@ export interface Message {
   ConversationId: string;
   CharacterId: string;
   UserId: string;
+  attachments?: MessageAttachment[];
 }
 
 export interface Conversation {
