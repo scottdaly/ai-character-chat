@@ -177,3 +177,58 @@ code {
 .tooltip-group:hover .tooltip-content {
   opacity: 1;
 }
+
+/* Markdown content styles */
+.markdown-content {
+  line-height: 1.6;
+}
+
+.markdown-content > *:first-child {
+  margin-top: 0;
+}
+
+.markdown-content > *:last-child {
+  margin-bottom: 0;
+}
+
+/* Ensure proper spacing for nested lists */
+.markdown-content ul ul,
+.markdown-content ol ol,
+.markdown-content ul ol,
+.markdown-content ol ul {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  margin-left: 0;
+  padding-left: 1.5rem;
+}
+
+/* Ensure list markers are visible */
+.markdown-content ul,
+.markdown-content ol {
+  padding-left: 1.5rem;
+  margin-left: 0.5rem;
+}
+
+.markdown-content li {
+  margin-left: 0;
+}
+
+/* Code block improvements */
+.markdown-content pre {
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.markdown-content code {
+  word-break: break-word;
+}
+
+/* Table responsiveness */
+.markdown-content table {
+  border-collapse: collapse;
+}
+
+/* Link styling improvements */
+.markdown-content a:hover {
+  text-decoration: underline;
+}

@@ -253,6 +253,14 @@ export const useMessages = (
     }
   };
 
+  // Function to allow optimistic updates to messages
+  const updateMessages = useCallback(
+    (updater: (messages: Message[]) => Message[]) => {
+      setMessages(updater);
+    },
+    []
+  );
+
   return {
     messages,
     conversationTree,
@@ -263,6 +271,7 @@ export const useMessages = (
     isNewConversation: conversationId.startsWith("temp-"),
     realConversationId,
     loadMessages: wrappedLoadMessages,
+    updateMessages,
     isAccessDenied,
     accessError,
   };

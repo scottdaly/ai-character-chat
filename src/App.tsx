@@ -16,6 +16,7 @@ import UsernamePromptModal from "./components/UsernamePromptModal";
 import CreateCharacter from "./components/CreateCharacter";
 import { useAuth } from "./contexts/AuthContext";
 import Test from "./components/Test";
+import MarkdownTest from "./components/MarkdownTest";
 import Admin from "./components/Admin";
 import AdminLogin from "./components/AdminLogin";
 import SubscriptionPlans from "./components/SubscriptionPlans";
@@ -37,6 +38,7 @@ const router = createBrowserRouter([
       { path: "setup-username", element: <SetupUsername /> },
       { path: "explore", element: <Explore /> },
       { path: "test", element: <Test /> },
+      { path: "markdown-test", element: <MarkdownTest /> },
       {
         path: "dashboard",
         element: <ProtectedRoute />,

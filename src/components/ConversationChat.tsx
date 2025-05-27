@@ -23,6 +23,7 @@ import Toast from "./Toast";
 import Tooltip from "./Tooltip";
 import { IoRefresh } from "react-icons/io5";
 import { MessageTreeNode } from "../types";
+import MarkdownMessage from "./MarkdownMessage";
 
 // Typing indicator component
 const TypingIndicator = () => {
@@ -161,6 +162,7 @@ export default function ConversationChat() {
   // Edit message state
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState<string>("");
+  const [isEditLoading, setIsEditLoading] = useState(false);
 
   const {
     conversations: userConversations,
@@ -194,6 +196,7 @@ export default function ConversationChat() {
     isNewConversation,
     realConversationId,
     loadMessages,
+    updateMessages,
     isAccessDenied,
     accessError,
   } = useMessages(
@@ -413,42 +416,32 @@ export default function ConversationChat() {
     return null;
   };
 
-  // Helper function to get branch selector for a message
+  // Helper function to get branch selector for a user message
   const getBranchSelector = (messageId: string) => {
     if (!conversationTree?.tree) return null;
 
     try {
       const treeNode = findTreeNode(messageId, conversationTree.tree);
+      if (!treeNode || treeNode.role !== "user") return null;
 
-      // Check for children (responses to this message)
-      const hasMultipleChildren =
-        treeNode?.children && treeNode.children.length > 1;
-
-      // Check for siblings (alternative versions of this message)
+      // For user messages, only show siblings (alternative versions of this user message)
       let siblings: MessageTreeNode[] = [];
-      if (treeNode && treeNode.parentId === null) {
-        // For root messages, siblings are other root messages
+      if (treeNode.parentId === null) {
+        // For root messages, siblings are other root messages with the same role
         siblings = conversationTree.tree.filter(
-          (node) => node.parentId === null && node.role === treeNode.role
+          (node) => node.parentId === null && node.role === "user"
         );
-      } else if (treeNode && treeNode.parentId) {
+      } else if (treeNode.parentId) {
         // For non-root messages, find siblings through parent
         const parent = findTreeNode(treeNode.parentId, conversationTree.tree);
         siblings =
-          parent?.children?.filter((child) => child.role === treeNode.role) ||
-          [];
+          parent?.children?.filter((child) => child.role === "user") || [];
       }
+
       const hasMultipleSiblings = siblings.length > 1;
 
-      // Return branch selector if there are multiple children OR multiple siblings
-      if (hasMultipleChildren) {
-        return (
-          <InlineBranchSelector
-            message={treeNode}
-            onSwitchBranch={handleSwitchBranch}
-          />
-        );
-      } else if (hasMultipleSiblings && treeNode) {
+      // Only show branch selector if there are multiple sibling user messages
+      if (hasMultipleSiblings && treeNode) {
         // Create a virtual message node for sibling selection
         const virtualMessage: MessageTreeNode = {
           ...treeNode,
@@ -513,6 +506,25 @@ export default function ConversationChat() {
         return;
       }
 
+      // Start edit loading state
+      setIsEditLoading(true);
+
+      // Step 1: Optimistically update the UI - close edit mode and show edited message
+      updateMessages((currentMessages) => {
+        const updatedMessages = [...currentMessages];
+        updatedMessages[messageIndex] = {
+          ...messageToEdit,
+          content: editingContent.trim(),
+        };
+
+        // Step 2: Remove all messages after the edited one (they're from the old branch)
+        return updatedMessages.slice(0, messageIndex + 1);
+      });
+
+      // Clear editing state to show the updated message
+      setEditingMessageId(null);
+      setEditingContent("");
+
       // Call the API to edit the message
       await apiFetch(
         `/api/conversations/${conversationIdToUse}/messages/${messageId}/edit`,
@@ -522,25 +534,22 @@ export default function ConversationChat() {
         }
       );
 
-      // Clear editing state
-      setEditingMessageId(null);
-      setEditingContent("");
-
-      // Reload messages to get the updated conversation tree
+      // Step 3: Reload messages to get the updated conversation tree with new AI response
       await loadMessages();
-
-      setToast({
-        message: "Message edited successfully",
-        type: "success",
-      });
     } catch (err) {
       console.error("Failed to save edited message:", err);
       const errorMessage =
         err instanceof Error ? err.message : "Failed to save edited message";
+
+      // Restore original messages on error
+      await loadMessages();
+
       setToast({
         message: errorMessage,
         type: "error",
       });
+    } finally {
+      setIsEditLoading(false);
     }
   };
 
@@ -804,7 +813,7 @@ export default function ConversationChat() {
                   className={`relative max-w-2xl rounded-xl leading-relaxed peer ${
                     message.role === "user"
                       ? "px-4 py-3 bg-zinc-700/70 text-white"
-                      : "text-zinc-100 pt-3 pb-0.5"
+                      : "text-zinc-100 pb-0.5"
                   }
                   ${
                     message.attachments &&
@@ -835,14 +844,18 @@ export default function ConversationChat() {
                         <div className="flex gap-2">
                           <button
                             onClick={() => handleSaveEdit(message.id)}
-                            disabled={!editingContent.trim() || messagesLoading}
+                            disabled={
+                              !editingContent.trim() ||
+                              messagesLoading ||
+                              isEditLoading
+                            }
                             className="px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white rounded text-sm transition-colors"
                           >
-                            Save
+                            {isEditLoading ? "Saving..." : "Save"}
                           </button>
                           <button
                             onClick={handleCancelEdit}
-                            disabled={messagesLoading}
+                            disabled={messagesLoading || isEditLoading}
                             className="px-3 py-1 bg-zinc-600 hover:bg-zinc-700 disabled:bg-zinc-500 disabled:cursor-not-allowed text-white rounded text-sm transition-colors"
                           >
                             Cancel
@@ -853,6 +866,8 @@ export default function ConversationChat() {
                         </span>
                       </div>
                     </div>
+                  ) : message.role === "assistant" ? (
+                    <MarkdownMessage content={message.content} />
                   ) : (
                     <p className="whitespace-pre-wrap">{message.content}</p>
                   )}
@@ -874,7 +889,7 @@ export default function ConversationChat() {
                     <Tooltip text="Regenerate message" offsetSize="large">
                       <button
                         onClick={() => handleRegenerateMessage(message.id)}
-                        disabled={messagesLoading}
+                        disabled={messagesLoading || isEditLoading}
                         className="text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700 py-2 px-2 rounded-lg flex items-center gap-2 disabled:opacity-50 cursor-pointer transition-colors duration-300 ease-in-out group/regenerate"
                         aria-label="Regenerate message"
                       >
@@ -886,7 +901,7 @@ export default function ConversationChat() {
                   <div></div>
                 )}
                 <span
-                  className={`opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out text-xs text-zinc-400 last:pb-6 ${
+                  className={`opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out text-xs text-zinc-400 ${
                     message.role === "user"
                       ? "px-2 flex flex-row gap-2 justify-end items-center"
                       : ""
@@ -898,7 +913,11 @@ export default function ConversationChat() {
                         onClick={() =>
                           handleStartEdit(message.id, message.content)
                         }
-                        disabled={messagesLoading || editingMessageId !== null}
+                        disabled={
+                          messagesLoading ||
+                          editingMessageId !== null ||
+                          isEditLoading
+                        }
                         className="text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700/50 p-1.5 rounded flex items-center gap-2 disabled:opacity-50 cursor-pointer transition-colors duration-300 ease-in-out group/edit"
                       >
                         <AiFillEdit className="h-4 w-4 transition-transform duration-300 ease-in-out group-hover/edit:scale-110" />
@@ -906,8 +925,8 @@ export default function ConversationChat() {
                     </Tooltip>
                   )}
 
-                  {/* Branch selector inline with edit button */}
-                  {getBranchSelector(message.id)}
+                  {/* Branch selector inline with edit button - only for user messages */}
+                  {message.role === "user" && getBranchSelector(message.id)}
 
                   {new Date(message.createdAt).toLocaleTimeString([], {
                     hour: "numeric",
@@ -917,7 +936,9 @@ export default function ConversationChat() {
               </div>
             </div>
           ))}
-          {messagesLoading && messages.length > 0 && <TypingIndicator />}
+          {(messagesLoading || isEditLoading) && messages.length > 0 && (
+            <TypingIndicator />
+          )}
           <div ref={messagesEndRef} />
         </div>
       </div>
@@ -987,6 +1008,7 @@ export default function ConversationChat() {
                 className="w-full text-gray-100 placeholder:text-gray-400 focus:outline-none resize-none bg-transparent border-none min-h-[24px] max-h-[150px] overflow-y-auto"
                 disabled={
                   messagesLoading ||
+                  isEditLoading ||
                   isAccessDenied ||
                   isLoadingUserConversations ||
                   !subscriptionTier ||
@@ -1031,6 +1053,7 @@ export default function ConversationChat() {
                   title="Send message"
                   disabled={
                     messagesLoading ||
+                    isEditLoading ||
                     (!newMessage.trim() && selectedImages.length === 0) ||
                     isAccessDenied ||
                     isLoadingUserConversations ||
