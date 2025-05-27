@@ -143,6 +143,14 @@ const Conversation = sequelize.define("Conversation", {
   },
   title: DataTypes.STRING,
   lastMessage: DataTypes.TEXT,
+  currentHeadId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: "Messages",
+      key: "id",
+    },
+  },
 });
 
 const Message = sequelize.define(
@@ -155,6 +163,18 @@ const Message = sequelize.define(
     },
     content: DataTypes.TEXT,
     role: DataTypes.STRING,
+    parentId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: "Messages",
+        key: "id",
+      },
+    },
+    childIndex: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0,
+    },
     attachments: {
       type: DataTypes.TEXT, // Store JSON string of attachments
       allowNull: true,
@@ -187,6 +207,16 @@ Message.belongsTo(Conversation);
 
 User.hasMany(Message);
 Message.belongsTo(User);
+
+// Tree structure for messages
+Message.hasMany(Message, { as: "Children", foreignKey: "parentId" });
+Message.belongsTo(Message, { as: "Parent", foreignKey: "parentId" });
+
+// Current head relationship
+Conversation.belongsTo(Message, {
+  as: "CurrentHead",
+  foreignKey: "currentHeadId",
+});
 
 const syncOptions =
   process.env.NODE_ENV === "development" ? { alter: true } : {};
@@ -355,6 +385,111 @@ const initializeStripePortal = async () => {
       console.log("Successfully added attachments column");
     }
 
+    // Check if Messages table has branching columns
+    const hasBranchingColumns = await sequelize.query(
+      "SELECT name FROM pragma_table_info('Messages') WHERE name IN ('parentId', 'childIndex')",
+      { type: Sequelize.QueryTypes.SELECT }
+    );
+
+    if (hasBranchingColumns.length < 2) {
+      console.log("Adding branching columns to Messages table...");
+
+      // Add parentId column if it doesn't exist
+      const hasParentId = hasBranchingColumns.some(
+        (col) => col.name === "parentId"
+      );
+      if (!hasParentId) {
+        await sequelize.query(
+          "ALTER TABLE Messages ADD COLUMN parentId VARCHAR(255)"
+        );
+        console.log("Added parentId column");
+      }
+
+      // Add childIndex column if it doesn't exist
+      const hasChildIndex = hasBranchingColumns.some(
+        (col) => col.name === "childIndex"
+      );
+      if (!hasChildIndex) {
+        await sequelize.query(
+          "ALTER TABLE Messages ADD COLUMN childIndex INTEGER DEFAULT 0"
+        );
+        console.log("Added childIndex column");
+      }
+    }
+
+    // Check if Conversations table has currentHeadId column
+    const hasCurrentHeadId = await sequelize.query(
+      "SELECT name FROM pragma_table_info('Conversations') WHERE name = 'currentHeadId'",
+      { type: Sequelize.QueryTypes.SELECT }
+    );
+
+    if (hasCurrentHeadId.length === 0) {
+      console.log("Adding currentHeadId column to Conversations table...");
+      await sequelize.query(
+        "ALTER TABLE Conversations ADD COLUMN currentHeadId VARCHAR(255)"
+      );
+      console.log("Successfully added currentHeadId column");
+    }
+
+    // Migrate existing linear conversations to tree structure
+    console.log("Migrating existing conversations to tree structure...");
+    const conversationsToMigrate = await sequelize.query(
+      "SELECT id FROM Conversations WHERE currentHeadId IS NULL",
+      { type: Sequelize.QueryTypes.SELECT }
+    );
+
+    for (const conv of conversationsToMigrate) {
+      const messages = await sequelize.query(
+        "SELECT id, createdAt FROM Messages WHERE ConversationId = ? ORDER BY createdAt ASC",
+        {
+          replacements: [conv.id],
+          type: Sequelize.QueryTypes.SELECT,
+        }
+      );
+
+      if (messages.length > 0) {
+        // Set up parent-child relationships
+        for (let i = 1; i < messages.length; i++) {
+          await sequelize.query(
+            "UPDATE Messages SET parentId = ?, childIndex = 0 WHERE id = ?",
+            {
+              replacements: [messages[i - 1].id, messages[i].id],
+              type: Sequelize.QueryTypes.UPDATE,
+            }
+          );
+        }
+
+        // Set the last message as the current head
+        const lastMessage = messages[messages.length - 1];
+        await sequelize.query(
+          "UPDATE Conversations SET currentHeadId = ? WHERE id = ?",
+          {
+            replacements: [lastMessage.id, conv.id],
+            type: Sequelize.QueryTypes.UPDATE,
+          }
+        );
+      }
+    }
+    console.log(
+      `Migrated ${conversationsToMigrate.length} conversations to tree structure`
+    );
+
+    // Add indexes for better tree query performance
+    try {
+      await sequelize.query(
+        "CREATE INDEX IF NOT EXISTS idx_messages_parent_id ON Messages(parentId)"
+      );
+      await sequelize.query(
+        "CREATE INDEX IF NOT EXISTS idx_messages_conversation_parent ON Messages(ConversationId, parentId)"
+      );
+      await sequelize.query(
+        "CREATE INDEX IF NOT EXISTS idx_conversations_current_head ON Conversations(currentHeadId)"
+      );
+      console.log("Added database indexes for tree structure");
+    } catch (indexError) {
+      console.log("Indexes may already exist:", indexError.message);
+    }
+
     // Create the official Nevermade user if it doesn't exist
     const [officialUser] = await User.findOrCreate({
       where: { username: "nevermade" },
@@ -429,21 +564,118 @@ app.use(
 );
 app.use(passport.initialize());
 
+// Request logging middleware (simplified for production)
 app.use((req, res, next) => {
-  console.log("Incoming request:", {
-    method: req.method,
-    url: req.url,
-    path: req.path,
-    baseUrl: req.baseUrl,
-    originalUrl: req.originalUrl,
-    headers: {
-      host: req.headers.host,
-      origin: req.headers.origin,
-      referer: req.headers.referer,
-    },
-  });
+  if (process.env.NODE_ENV === "development") {
+    console.log(`${req.method} ${req.path}`);
+  }
   next();
 });
+
+// Helper functions for tree operations
+const getMessagePath = async (messageId) => {
+  const path = [];
+  let currentId = messageId;
+
+  while (currentId) {
+    const message = await Message.findByPk(currentId, {
+      attributes: [
+        "id",
+        "parentId",
+        "role",
+        "content",
+        "createdAt",
+        "childIndex",
+        "attachments",
+      ],
+    });
+
+    if (!message) break;
+
+    path.unshift(message);
+    currentId = message.parentId;
+  }
+
+  return path;
+};
+
+const getMessageChildren = async (parentId) => {
+  return await Message.findAll({
+    where: { parentId },
+    order: [
+      ["childIndex", "ASC"],
+      ["createdAt", "ASC"],
+    ],
+    attributes: [
+      "id",
+      "parentId",
+      "role",
+      "content",
+      "createdAt",
+      "childIndex",
+      "attachments",
+    ],
+  });
+};
+
+const getNextChildIndex = async (parentId) => {
+  const siblings = await Message.findAll({
+    where: { parentId },
+    attributes: ["childIndex"],
+  });
+
+  if (siblings.length === 0) return 0;
+
+  const maxIndex = Math.max(...siblings.map((s) => s.childIndex || 0));
+  return maxIndex + 1;
+};
+
+const buildMessageTree = async (conversationId, currentHeadId) => {
+  // Get the current path from root to head
+  const currentPath = await getMessagePath(currentHeadId);
+
+  // Build tree structure with branches
+  const tree = [];
+  const messageMap = new Map();
+
+  // First, get all messages in the conversation
+  const allMessages = await Message.findAll({
+    where: { ConversationId: conversationId },
+    order: [["createdAt", "ASC"]],
+  });
+
+  // Create a map for quick lookup
+  allMessages.forEach((msg) => {
+    messageMap.set(msg.id, {
+      ...msg.toJSON(),
+      children: [],
+      isOnCurrentPath: currentPath.some((p) => p.id === msg.id),
+    });
+  });
+
+  // Build the tree structure
+  allMessages.forEach((msg) => {
+    const messageData = messageMap.get(msg.id);
+    if (msg.parentId) {
+      const parent = messageMap.get(msg.parentId);
+      if (parent) {
+        parent.children.push(messageData);
+      }
+    } else {
+      tree.push(messageData);
+    }
+  });
+
+  // Sort children by childIndex
+  const sortChildren = (node) => {
+    node.children.sort((a, b) => (a.childIndex || 0) - (b.childIndex || 0));
+    node.children.forEach(sortChildren);
+  };
+
+  tree.forEach(sortChildren);
+
+  return { tree, currentPath: currentPath.map((p) => p.toJSON()) };
+};
 
 // Auth Middleware - Define before routes
 const authenticateToken = async (req, res, next) => {
@@ -820,15 +1052,44 @@ app.get(
   authenticateToken,
   async (req, res) => {
     try {
-      const messages = await Message.findAll({
+      // Get the conversation to find the current head
+      const conversation = await Conversation.findOne({
         where: {
-          ConversationId: req.params.conversationId,
+          id: req.params.conversationId,
           UserId: req.user.id,
         },
-        order: [["createdAt", "ASC"]],
       });
-      res.json(messages);
+
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+
+      // If no current head is set, return linear messages for backward compatibility
+      if (!conversation.currentHeadId) {
+        const messages = await Message.findAll({
+          where: {
+            ConversationId: req.params.conversationId,
+            UserId: req.user.id,
+          },
+          order: [["createdAt", "ASC"]],
+        });
+        return res.json({ messages, tree: null, currentPath: messages });
+      }
+
+      // Return the tree structure with current path
+      const { tree, currentPath } = await buildMessageTree(
+        req.params.conversationId,
+        conversation.currentHeadId
+      );
+
+      res.json({
+        messages: currentPath, // For backward compatibility
+        tree,
+        currentPath,
+        currentHeadId: conversation.currentHeadId,
+      });
     } catch (err) {
+      console.error("Failed to load messages:", err);
       res.status(500).json({ error: "Failed to load messages" });
     }
   }
@@ -856,67 +1117,31 @@ app.post(
       const isProUser = await checkUserSubscriptionStatus(req.user);
 
       if (!isProUser) {
-        console.log(
-          `[SERVER VALIDATION] User ${req.user.id} (${req.user.username}) is on free tier. Validating message send for char ${conversation.CharacterId}...`
-        );
-
         const allUserConversations = await Conversation.findAll({
           where: { UserId: req.user.id },
           attributes: ["CharacterId", "createdAt"],
           order: [["createdAt", "DESC"]],
         });
-        console.log(
-          `[SERVER VALIDATION] Found ${allUserConversations.length} total conversations for user.`
-        );
-        // console.log("[SERVER VALIDATION] All conversations raw:", JSON.stringify(allUserConversations.map(c => ({ charId: c.CharacterId, updated: c.updatedAt })), null, 2));
 
         const uniqueRecentCharacterIds = [
           ...new Set(
             allUserConversations.map((conv) => conv.CharacterId.toString())
           ),
         ];
-        console.log(
-          "[SERVER VALIDATION] Unique recent character IDs (ordered by convo recency):",
-          uniqueRecentCharacterIds
-        );
-
         const currentCharacterIdStr = conversation.CharacterId.toString();
-        console.log(
-          "[SERVER VALIDATION] Current character ID for this conversation:",
-          currentCharacterIdStr
-        );
 
         if (uniqueRecentCharacterIds.length >= 3) {
-          console.log(
-            "[SERVER VALIDATION] User has interacted with 3 or more unique characters."
-          );
           const allowedCharacterIdsSlice = uniqueRecentCharacterIds.slice(0, 3);
-          console.log(
-            "[SERVER VALIDATION] Allowed most recent 3 character IDs:",
-            allowedCharacterIdsSlice
-          );
 
           if (!allowedCharacterIdsSlice.includes(currentCharacterIdStr)) {
-            console.log(
-              `[SERVER VALIDATION] DENIED: Character ${currentCharacterIdStr} is NOT in the allowed slice. Sending 403.`
-            );
             return res.status(403).json({
               error:
                 "Upgrade to Pro to send messages to this character. You can chat with your 3 most recent characters on the free plan.",
             });
           }
-          console.log(
-            `[SERVER VALIDATION] ALLOWED: Character ${currentCharacterIdStr} IS in the allowed slice.`
-          );
         } else {
-          console.log(
-            "[SERVER VALIDATION] ALLOWED: User has interacted with fewer than 3 unique characters."
-          );
         }
       } else {
-        console.log(
-          `[SERVER VALIDATION] User ${req.user.id} (${req.user.username}) is on pro tier. Skipping validation.`
-        );
       }
       // END SERVER-SIDE ACCESS VALIDATION
 
@@ -926,15 +1151,32 @@ app.post(
           .json({ error: "Character not found for conversation" });
       }
 
-      // Get previous messages in the conversation
-      const previousMessages = await Message.findAll({
-        where: {
-          ConversationId: conversation.id,
-        },
-        order: [["createdAt", "ASC"]],
-      });
+      // Get the current path for context (tree-aware)
+      let previousMessages = [];
+      let parentMessageId = null;
+      let childIndex = 0;
 
-      // Save user message
+      if (conversation.currentHeadId) {
+        // Get the current path from root to head
+        previousMessages = await getMessagePath(conversation.currentHeadId);
+        parentMessageId = conversation.currentHeadId;
+        childIndex = await getNextChildIndex(parentMessageId);
+      } else {
+        // Fallback for conversations without tree structure
+        previousMessages = await Message.findAll({
+          where: {
+            ConversationId: conversation.id,
+          },
+          order: [["createdAt", "ASC"]],
+        });
+
+        if (previousMessages.length > 0) {
+          parentMessageId = previousMessages[previousMessages.length - 1].id;
+          childIndex = 0;
+        }
+      }
+
+      // Save user message with tree structure
       const userMessage = await Message.create({
         content: req.body.content,
         role: "user",
@@ -942,6 +1184,8 @@ app.post(
         ConversationId: conversation.id,
         CharacterId: conversation.CharacterId,
         attachments: req.body.attachments || null,
+        parentId: parentMessageId,
+        childIndex: childIndex,
       });
 
       // Increment message count for the character
@@ -997,15 +1241,7 @@ app.post(
 
         // Get AI response with full conversation history
         let aiResponse;
-        console.log(
-          `[MODEL SELECTION] Using model: ${conversation.Character.model} for character: ${conversation.Character.name}`
-        );
-        console.log(
-          `[MESSAGE HISTORY] Total messages in history: ${messageHistory.length}`
-        );
-
         const modelProvider = getModelProvider(conversation.Character.model);
-        console.log(`[MODEL PROVIDER] Provider: ${modelProvider}`);
 
         if (modelProvider === "anthropic") {
           // Format messages for Claude API
@@ -1077,9 +1313,6 @@ app.post(
           }
         } else if (modelProvider === "google") {
           // Format messages for Google AI
-          console.log(
-            `[GOOGLE AI] Calling Google AI with model: ${conversation.Character.model}`
-          );
           try {
             if (!googleAI) {
               throw new Error(
@@ -1132,10 +1365,6 @@ app.post(
               });
             }
 
-            console.log(
-              `[GOOGLE AI] Chat history length: ${chatHistory.length}`
-            );
-
             // If we have previous conversation history, use chat with history
             if (chatHistory.length > 1) {
               // Start chat with history (excluding the last user message)
@@ -1167,20 +1396,10 @@ app.post(
             }
 
             if (!aiResponse || aiResponse.trim() === "") {
-              console.error(
-                "[GOOGLE AI] Empty or whitespace-only response received"
-              );
               throw new Error(
                 "Empty response from Google AI - the model may have declined to respond due to content policies"
               );
             }
-
-            console.log(
-              `[GOOGLE AI] Response received: ${aiResponse.substring(
-                0,
-                100
-              )}...`
-            );
           } catch (googleError) {
             console.error("Google AI error:", googleError);
 
@@ -1206,9 +1425,6 @@ app.post(
           }
         } else if (modelProvider === "openai") {
           // OpenAI models
-          console.log(
-            `[OPENAI] Calling OpenAI with model: ${conversation.Character.model}`
-          );
           const response = await openai.chat.completions.create({
             model: conversation.Character.model,
             messages: messageHistory,
@@ -1218,13 +1434,21 @@ app.post(
           throw new Error(`Unsupported model provider: ${modelProvider}`);
         }
 
-        // Save AI message
+        // Save AI message with tree structure
         const aiMessage = await Message.create({
           content: aiResponse,
           role: "assistant",
           UserId: req.user.id,
           ConversationId: conversation.id,
           CharacterId: conversation.CharacterId,
+          parentId: userMessage.id,
+          childIndex: 0, // AI response is always the first child of user message
+        });
+
+        // Update conversation's current head to the new AI message
+        await conversation.update({
+          currentHeadId: aiMessage.id,
+          lastMessage: aiResponse.substring(0, 50),
         });
 
         // If this is the first message exchange, generate a title
@@ -1253,6 +1477,7 @@ app.post(
             await conversation.update({
               title: newTitle,
               lastMessage: aiResponse.substring(0, 50),
+              currentHeadId: aiMessage.id,
             });
           } catch (titleError) {
             console.error("Failed to generate title:", titleError);
@@ -1260,13 +1485,9 @@ app.post(
             await conversation.update({
               title: aiResponse.substring(0, 30),
               lastMessage: aiResponse.substring(0, 50),
+              currentHeadId: aiMessage.id,
             });
           }
-        } else {
-          // Just update the last message for existing conversations
-          await conversation.update({
-            lastMessage: aiResponse.substring(0, 50),
-          });
         }
 
         // Return both messages as an array
@@ -1329,48 +1550,32 @@ app.post(
           .json({ error: "Can only regenerate assistant messages" });
       }
 
-      // Get all messages in the conversation up to (but not including) the message to regenerate
-      const allMessages = await Message.findAll({
-        where: {
-          ConversationId: conversation.id,
-        },
-        order: [["createdAt", "ASC"]],
-      });
-
-      const messageIndex = allMessages.findIndex(
-        (msg) => msg.id === messageToRegenerate.id
-      );
-      if (messageIndex === -1) {
-        return res
-          .status(404)
-          .json({ error: "Message not found in conversation" });
+      // Find the parent user message
+      if (!messageToRegenerate.parentId) {
+        return res.status(400).json({
+          error: "Cannot regenerate a message without a parent",
+        });
       }
 
-      const messagesUpToRegenerate = allMessages.slice(0, messageIndex);
-
-      // Delete the message to regenerate and all messages after it
-      await Message.destroy({
-        where: {
-          ConversationId: conversation.id,
-          createdAt: {
-            [Sequelize.Op.gte]: messageToRegenerate.createdAt,
-          },
-        },
-      });
-
-      // Get the user message that prompted this assistant response
-      const userMessage =
-        messagesUpToRegenerate[messagesUpToRegenerate.length - 1];
-      if (!userMessage || userMessage.role !== "user") {
+      const parentUserMessage = await Message.findByPk(
+        messageToRegenerate.parentId
+      );
+      if (!parentUserMessage || parentUserMessage.role !== "user") {
         return res.status(400).json({
           error: "Cannot find the user message that prompted this response",
         });
       }
 
+      // Get the conversation history up to the parent user message
+      const contextPath = await getMessagePath(parentUserMessage.id);
+
+      // Create a new child index for the regenerated message
+      const newChildIndex = await getNextChildIndex(parentUserMessage.id);
+
       // Prepare conversation history for AI APIs
       const messageHistory = [
         { role: "system", content: conversation.Character.systemPrompt },
-        ...messagesUpToRegenerate.map((msg) => {
+        ...contextPath.map((msg) => {
           const messageContent = { role: msg.role, content: msg.content };
 
           // Add attachments if the model supports images and message has them
@@ -1527,6 +1732,8 @@ app.post(
         UserId: req.user.id,
         ConversationId: conversation.id,
         CharacterId: conversation.CharacterId,
+        parentId: parentUserMessage.id,
+        childIndex: newChildIndex,
       });
 
       // Update conversation's last message
@@ -1544,7 +1751,7 @@ app.post(
   }
 );
 
-// Add endpoint to edit a message
+// Add endpoint to edit a message (creates a new branch)
 app.put(
   "/api/conversations/:conversationId/messages/:messageId/edit",
   authenticateToken,
@@ -1586,34 +1793,15 @@ app.put(
         return res.status(400).json({ error: "Can only edit user messages" });
       }
 
-      // Get all messages in the conversation
-      const allMessages = await Message.findAll({
-        where: {
-          ConversationId: conversation.id,
-        },
-        order: [["createdAt", "ASC"]],
-      });
-
-      const messageIndex = allMessages.findIndex(
-        (msg) => msg.id === messageToEdit.id
-      );
-      if (messageIndex === -1) {
-        return res
-          .status(404)
-          .json({ error: "Message not found in conversation" });
+      // Check if content actually changed
+      if (content.trim() === messageToEdit.content.trim()) {
+        return res.json({ success: true, message: "No changes made" });
       }
 
-      // Delete the message to edit and all messages after it
-      await Message.destroy({
-        where: {
-          ConversationId: conversation.id,
-          createdAt: {
-            [Sequelize.Op.gte]: messageToEdit.createdAt,
-          },
-        },
-      });
+      // Create a new branch by creating a sibling message
+      const newChildIndex = await getNextChildIndex(messageToEdit.parentId);
 
-      // Create the edited user message
+      // Create the edited user message as a new branch
       const editedUserMessage = await Message.create({
         content: content.trim(),
         role: "user",
@@ -1621,15 +1809,19 @@ app.put(
         ConversationId: conversation.id,
         CharacterId: conversation.CharacterId,
         attachments: messageToEdit.attachments, // Preserve attachments
+        parentId: messageToEdit.parentId,
+        childIndex: newChildIndex,
       });
 
-      // Get messages up to the edited message for context
-      const messagesUpToEdit = allMessages.slice(0, messageIndex);
+      // Get the conversation history up to the parent of the edited message
+      const contextPath = messageToEdit.parentId
+        ? await getMessagePath(messageToEdit.parentId)
+        : [];
 
       // Prepare conversation history for AI APIs
       const messageHistory = [
         { role: "system", content: conversation.Character.systemPrompt },
-        ...messagesUpToEdit.map((msg) => {
+        ...contextPath.map((msg) => {
           const messageContent = { role: msg.role, content: msg.content };
 
           // Add attachments if the model supports images and message has them
@@ -1794,17 +1986,20 @@ app.put(
         throw new Error(`Unsupported model provider: ${modelProvider}`);
       }
 
-      // Save the new AI message
+      // Save the new AI message as a child of the edited user message
       const newAiMessage = await Message.create({
         content: aiResponse,
         role: "assistant",
         UserId: req.user.id,
         ConversationId: conversation.id,
         CharacterId: conversation.CharacterId,
+        parentId: editedUserMessage.id,
+        childIndex: 0, // AI response is always the first child of user message
       });
 
-      // Update conversation's last message
+      // Update conversation's current head to the new AI message (switch to this branch)
       await conversation.update({
+        currentHeadId: newAiMessage.id,
         lastMessage: aiResponse.substring(0, 50),
       });
 
@@ -1812,10 +2007,65 @@ app.put(
         success: true,
         userMessage: editedUserMessage,
         aiMessage: newAiMessage,
+        newHeadId: newAiMessage.id,
       });
     } catch (err) {
       console.error("Edit message error:", err);
       res.status(500).json({ error: err.message || "Failed to edit message" });
+    }
+  }
+);
+
+// Add endpoint to switch conversation branch
+app.put(
+  "/api/conversations/:conversationId/switch-branch/:messageId",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const conversation = await Conversation.findOne({
+        where: {
+          id: req.params.conversationId,
+          UserId: req.user.id,
+        },
+      });
+
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+
+      // Verify the message exists and belongs to this conversation
+      const message = await Message.findOne({
+        where: {
+          id: req.params.messageId,
+          ConversationId: req.params.conversationId,
+          UserId: req.user.id,
+        },
+      });
+
+      if (!message) {
+        return res.status(404).json({ error: "Message not found" });
+      }
+
+      // Update the conversation's current head
+      await conversation.update({
+        currentHeadId: req.params.messageId,
+      });
+
+      // Return the new tree structure
+      const { tree, currentPath } = await buildMessageTree(
+        req.params.conversationId,
+        req.params.messageId
+      );
+
+      res.json({
+        success: true,
+        currentHeadId: req.params.messageId,
+        tree,
+        currentPath,
+      });
+    } catch (err) {
+      console.error("Switch branch error:", err);
+      res.status(500).json({ error: err.message || "Failed to switch branch" });
     }
   }
 );
@@ -2089,9 +2339,6 @@ app.put("/api/admin/characters/:id", authenticateToken, async (req, res) => {
 // Add new admin login route
 app.post("/auth/admin-login", async (req, res) => {
   const { username, password } = req.body;
-  console.log(username, password);
-  let hash = bcrypt.hashSync(process.env.ADMIN_PASSWORD, 10);
-  console.log(hash);
   if (
     username !== process.env.ADMIN_USERNAME ||
     !bcrypt.compareSync(password, process.env.ADMIN_PASSWORD_HASH)

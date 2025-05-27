@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams, useNavigate, useLocation } from "react-router-dom";
 import { useConversations } from "../api/conversations";
-import { FiPlus, FiTrash2 } from "react-icons/fi";
+import { FiPlus } from "react-icons/fi";
 import ConfirmationModal from "./ConfirmationModal";
 
 export default function ConversationList() {
@@ -25,12 +25,12 @@ export default function ConversationList() {
     navigate(`/dashboard/characters/${characterId}/conversations/${tempId}`);
   };
 
-  const handleDelete = async (e: React.MouseEvent, conversationId: string) => {
-    e.preventDefault(); // Prevent navigation
-    e.stopPropagation(); // Prevent event bubbling
-    setConversationToDelete(conversationId);
-    setDeleteModalOpen(true);
-  };
+  // const handleDelete = async (e: React.MouseEvent, conversationId: string) => {
+  //   e.preventDefault(); // Prevent navigation
+  //   e.stopPropagation(); // Prevent event bubbling
+  //   setConversationToDelete(conversationId);
+  //   setDeleteModalOpen(true);
+  // };
 
   const handleConfirmDelete = async () => {
     if (!conversationToDelete) return;

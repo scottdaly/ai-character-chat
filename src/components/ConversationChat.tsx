@@ -1,6 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { FiAlertTriangle, FiImage, FiX, FiCopy } from "react-icons/fi";
+import {
+  FiAlertTriangle,
+  FiImage,
+  FiX,
+  FiCopy,
+  FiChevronLeft,
+  FiChevronRight,
+} from "react-icons/fi";
 import { AiFillEdit } from "react-icons/ai";
 import { useAuth } from "../contexts/AuthContext";
 import { useMessages } from "../api/messages";
@@ -15,6 +22,7 @@ import { supportsImages } from "../config/models";
 import Toast from "./Toast";
 import Tooltip from "./Tooltip";
 import { IoRefresh } from "react-icons/io5";
+import { MessageTreeNode } from "../types";
 
 // Typing indicator component
 const TypingIndicator = () => {
@@ -45,10 +53,97 @@ const TypingIndicator = () => {
   );
 };
 
+// Helper function to find the deepest child in a branch
+const findDeepestChild = (node: MessageTreeNode): MessageTreeNode => {
+  if (!node.children || node.children.length === 0) {
+    return node;
+  }
+  // For branches, we want to follow the first child (the main conversation path)
+  return findDeepestChild(node.children[0]);
+};
+
+// Inline branch selector component
+const InlineBranchSelector = ({
+  message,
+  onSwitchBranch,
+}: {
+  message: MessageTreeNode;
+  onSwitchBranch: (messageId: string) => void;
+}) => {
+  if (!message.children || message.children.length <= 1) {
+    return null;
+  }
+
+  // Find current branch index
+  const currentBranchIndex = message.children.findIndex(
+    (child) => child.isOnCurrentPath
+  );
+  const totalBranches = message.children.length;
+
+  const switchToPrevious = () => {
+    if (currentBranchIndex > 0) {
+      const prevIndex = currentBranchIndex - 1;
+      const targetChild = message.children[prevIndex];
+      const deepestChild = findDeepestChild(targetChild);
+      onSwitchBranch(deepestChild.id);
+    }
+  };
+
+  const switchToNext = () => {
+    if (currentBranchIndex < totalBranches - 1) {
+      const nextIndex = currentBranchIndex + 1;
+      const targetChild = message.children[nextIndex];
+      const deepestChild = findDeepestChild(targetChild);
+      onSwitchBranch(deepestChild.id);
+    }
+  };
+
+  const isFirstBranch = currentBranchIndex === 0;
+  const isLastBranch = currentBranchIndex === totalBranches - 1;
+
+  return (
+    <div className="flex items-center gap-1">
+      <Tooltip text="Previous branch" show={!isFirstBranch}>
+        <button
+          onClick={switchToPrevious}
+          disabled={isFirstBranch}
+          className={`p-1 rounded flex items-center transition-colors duration-300 ease-in-out ${
+            isFirstBranch
+              ? "text-zinc-500"
+              : "text-zinc-200 hover:text-zinc-100 hover:bg-zinc-700/50 cursor-pointer"
+          }`}
+          aria-label="Previous branch"
+        >
+          <FiChevronLeft className="h-4 w-4" />
+        </button>
+      </Tooltip>
+
+      <span className="text-xs text-zinc-200 min-w-[1rem] text-center">
+        {currentBranchIndex + 1}/{totalBranches}
+      </span>
+
+      <Tooltip text="Next branch" show={!isLastBranch}>
+        <button
+          onClick={switchToNext}
+          disabled={isLastBranch}
+          className={`p-1 rounded flex items-center transition-colors duration-300 ease-in-out ${
+            isLastBranch
+              ? "text-zinc-500"
+              : "text-zinc-200 hover:text-zinc-100 hover:bg-zinc-700/50 cursor-pointer"
+          }`}
+          aria-label="Next branch"
+        >
+          <FiChevronRight className="h-4 w-4" />
+        </button>
+      </Tooltip>
+    </div>
+  );
+};
+
 export default function ConversationChat() {
   const { characterId, conversationId } = useParams();
   const navigate = useNavigate();
-  const { apiFetch, user, subscriptionTier } = useAuth();
+  const { apiFetch, subscriptionTier } = useAuth();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -78,11 +173,8 @@ export default function ConversationChat() {
   // Get conversation refresh function to update sidebar when titles change
   const { loadConversations } = useConversations(characterId!);
 
-  // Create a wrapper function to add logging
+  // Create a wrapper function to refresh conversation list
   const refreshConversationList = useCallback(() => {
-    console.log(
-      "[ConversationChat] Refreshing conversation list due to message update"
-    );
     loadConversations();
   }, [loadConversations]);
 
@@ -94,7 +186,9 @@ export default function ConversationChat() {
 
   const {
     messages,
+    conversationTree,
     sendMessage,
+    switchBranch,
     isLoading: messagesLoading,
     error: messagesError,
     isNewConversation,
@@ -257,8 +351,8 @@ export default function ConversationChat() {
         }
       );
 
-      // Reload messages to get the updated conversation
-      loadMessages();
+      // Reload messages to get the updated conversation tree
+      await loadMessages();
 
       setToast({
         message: "Message regenerated successfully",
@@ -285,6 +379,95 @@ export default function ConversationChat() {
   const handleCancelEdit = () => {
     setEditingMessageId(null);
     setEditingContent("");
+  };
+
+  // Handle branch switching
+  const handleSwitchBranch = async (messageId: string) => {
+    try {
+      await switchBranch(messageId);
+    } catch (err) {
+      console.error("Failed to switch branch:", err);
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to switch branch";
+      setToast({
+        message: errorMessage,
+        type: "error",
+      });
+    }
+  };
+
+  // Helper function to find tree node for a message
+  const findTreeNode = (
+    messageId: string,
+    nodes: MessageTreeNode[]
+  ): MessageTreeNode | null => {
+    for (const node of nodes) {
+      if (node.id === messageId) {
+        return node;
+      }
+      const found = findTreeNode(messageId, node.children);
+      if (found) {
+        return found;
+      }
+    }
+    return null;
+  };
+
+  // Helper function to get branch selector for a message
+  const getBranchSelector = (messageId: string) => {
+    if (!conversationTree?.tree) return null;
+
+    try {
+      const treeNode = findTreeNode(messageId, conversationTree.tree);
+
+      // Check for children (responses to this message)
+      const hasMultipleChildren =
+        treeNode?.children && treeNode.children.length > 1;
+
+      // Check for siblings (alternative versions of this message)
+      let siblings: MessageTreeNode[] = [];
+      if (treeNode && treeNode.parentId === null) {
+        // For root messages, siblings are other root messages
+        siblings = conversationTree.tree.filter(
+          (node) => node.parentId === null && node.role === treeNode.role
+        );
+      } else if (treeNode && treeNode.parentId) {
+        // For non-root messages, find siblings through parent
+        const parent = findTreeNode(treeNode.parentId, conversationTree.tree);
+        siblings =
+          parent?.children?.filter((child) => child.role === treeNode.role) ||
+          [];
+      }
+      const hasMultipleSiblings = siblings.length > 1;
+
+      // Return branch selector if there are multiple children OR multiple siblings
+      if (hasMultipleChildren) {
+        return (
+          <InlineBranchSelector
+            message={treeNode}
+            onSwitchBranch={handleSwitchBranch}
+          />
+        );
+      } else if (hasMultipleSiblings && treeNode) {
+        // Create a virtual message node for sibling selection
+        const virtualMessage: MessageTreeNode = {
+          ...treeNode,
+          children: siblings,
+          isOnCurrentPath: treeNode.isOnCurrentPath || false,
+        };
+        return (
+          <InlineBranchSelector
+            message={virtualMessage}
+            onSwitchBranch={handleSwitchBranch}
+          />
+        );
+      }
+
+      return null;
+    } catch (err) {
+      console.error("Error finding tree node:", err);
+      return null;
+    }
   };
 
   // Save edited message
@@ -343,8 +526,8 @@ export default function ConversationChat() {
       setEditingMessageId(null);
       setEditingContent("");
 
-      // Reload messages to get the updated conversation
-      loadMessages();
+      // Reload messages to get the updated conversation tree
+      await loadMessages();
 
       setToast({
         message: "Message edited successfully",
@@ -456,6 +639,60 @@ export default function ConversationChat() {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, messagesLoading]);
+
+  // Add keyboard shortcuts for branch navigation
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Only handle shortcuts when not editing or typing
+      if (
+        editingMessageId ||
+        document.activeElement?.tagName === "TEXTAREA" ||
+        document.activeElement?.tagName === "INPUT"
+      ) {
+        return;
+      }
+
+      // Alt + number keys to switch branches
+      if (event.altKey && event.key >= "1" && event.key <= "9") {
+        event.preventDefault();
+        const branchNumber = parseInt(event.key) - 1;
+
+        // Find the last message with branches
+        if (conversationTree && conversationTree.tree) {
+          const findLastMessageWithBranches = (
+            nodes: MessageTreeNode[]
+          ): MessageTreeNode | null => {
+            let lastWithBranches: MessageTreeNode | null = null;
+
+            const traverse = (nodeList: MessageTreeNode[]) => {
+              for (const node of nodeList) {
+                if (node.children && node.children.length > 1) {
+                  lastWithBranches = node;
+                }
+                traverse(node.children);
+              }
+            };
+
+            traverse(nodes);
+            return lastWithBranches;
+          };
+
+          const lastBranchedMessage = findLastMessageWithBranches(
+            conversationTree.tree
+          );
+          if (
+            lastBranchedMessage &&
+            lastBranchedMessage.children[branchNumber]
+          ) {
+            handleSwitchBranch(lastBranchedMessage.children[branchNumber].id);
+          }
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [conversationTree, editingMessageId, handleSwitchBranch]);
 
   if (!characterId || !conversationId) {
     return (
@@ -621,26 +858,27 @@ export default function ConversationChat() {
                   )}
                 </div>
               )}
+
               <div className="flex flex-row justify-between w-full">
                 {message.role === "assistant" ? (
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out flex items-center justify-center flex-row gap-2 py-1 bg-zinc-700/50 border border-zinc-700 rounded-lg px-1">
                     <Tooltip text="Copy message" offsetSize="large">
                       <button
                         onClick={() => handleCopyMessage(message.content)}
-                        className="text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700 py-2 px-2 rounded-lg flex items-center gap-2 disabled:opacity-50 cursor-pointer transition-colors duration-300 ease-in-out hover-group"
+                        className="text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700 py-2 px-2 rounded-lg flex items-center gap-2 disabled:opacity-50 cursor-pointer transition-colors duration-300 ease-in-out group/copy"
                         aria-label="Copy message"
                       >
-                        <FiCopy className="h-4 w-4 transition-transform duration-300 ease-in-out hover-group-hover:scale-110" />
+                        <FiCopy className="h-4 w-4 transition-transform duration-300 ease-in-out group-hover/copy:scale-110" />
                       </button>
                     </Tooltip>
                     <Tooltip text="Regenerate message" offsetSize="large">
                       <button
                         onClick={() => handleRegenerateMessage(message.id)}
                         disabled={messagesLoading}
-                        className="text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700 py-2 px-2 rounded-lg flex items-center gap-2 disabled:opacity-50 cursor-pointer transition-colors duration-300 ease-in-out hover-group"
+                        className="text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700 py-2 px-2 rounded-lg flex items-center gap-2 disabled:opacity-50 cursor-pointer transition-colors duration-300 ease-in-out group/regenerate"
                         aria-label="Regenerate message"
                       >
-                        <IoRefresh className="h-4 w-4 transition-transform duration-300 ease-in-out hover-group-hover:scale-110" />
+                        <IoRefresh className="h-4 w-4 transition-transform duration-300 ease-in-out group-hover/regenerate:scale-110" />
                       </button>
                     </Tooltip>
                   </div>
@@ -661,12 +899,16 @@ export default function ConversationChat() {
                           handleStartEdit(message.id, message.content)
                         }
                         disabled={messagesLoading || editingMessageId !== null}
-                        className="text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700/50 p-1.5 rounded flex items-center gap-2 disabled:opacity-50 cursor-pointer transition-colors duration-300 ease-in-out hover-group"
+                        className="text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700/50 p-1.5 rounded flex items-center gap-2 disabled:opacity-50 cursor-pointer transition-colors duration-300 ease-in-out group/edit"
                       >
-                        <AiFillEdit className="h-4 w-4 transition-transform duration-300 ease-in-out hover-group-hover:scale-110" />
+                        <AiFillEdit className="h-4 w-4 transition-transform duration-300 ease-in-out group-hover/edit:scale-110" />
                       </button>
                     </Tooltip>
                   )}
+
+                  {/* Branch selector inline with edit button */}
+                  {getBranchSelector(message.id)}
+
                   {new Date(message.createdAt).toLocaleTimeString([], {
                     hour: "numeric",
                     minute: "2-digit",
@@ -690,16 +932,9 @@ export default function ConversationChat() {
                 const target = e.target as HTMLElement;
                 const isButton = target.closest("button") !== null;
 
-                console.log("Input area clicked:", {
-                  target: target.tagName,
-                  isButton,
-                  textareaExists: !!textareaRef.current,
-                });
-
                 // Only focus if we didn't click on a button
                 if (!isButton && textareaRef.current) {
                   textareaRef.current.focus();
-                  console.log("Textarea focused");
                 }
               }}
             >

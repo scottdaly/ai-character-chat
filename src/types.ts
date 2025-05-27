@@ -32,6 +32,19 @@ export interface Message {
   CharacterId: string;
   UserId: string;
   attachments?: MessageAttachment[];
+  parentId?: string;
+  childIndex?: number;
+}
+
+export interface MessageTreeNode extends Message {
+  children: MessageTreeNode[];
+  isOnCurrentPath: boolean;
+}
+
+export interface ConversationTree {
+  tree: MessageTreeNode[];
+  currentPath: Message[];
+  currentHeadId?: string;
 }
 
 export interface Conversation {
@@ -41,6 +54,7 @@ export interface Conversation {
   createdAt: Date;
   characterId: string;
   userId: string;
+  currentHeadId?: string;
   Character?: {
     name: string;
     model: string;

@@ -258,7 +258,7 @@ export const isModelAvailable = (
   return userTier === "pro" || model.tier === "free";
 };
 
-export const getDefaultModel = (userTier: "free" | "pro" = "free"): string => {
+export const getDefaultModel = (_userTier: "free" | "pro" = "free"): string => {
   const freeModels = getModelsByTier("free");
   return (
     freeModels.find((m) => m.id === "gpt-4o-mini-2024-07-18")?.id ||
