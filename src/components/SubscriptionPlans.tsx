@@ -130,7 +130,7 @@ export default function SubscriptionPlans() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-zinc-900 overflow-y-auto dark-scrollbar">
+    <div className="flex-1 flex flex-col h-full overflow-y-auto dark-scrollbar">
       <Navbar
         subscriptionTier={subscriptionTier}
         isLoadingSubscription={isLoadingSubscription}
@@ -151,8 +151,8 @@ export default function SubscriptionPlans() {
                 key={plan.id}
                 className={`flex flex-col justify-between rounded-xl p-8 relative ${
                   subscriptionTier === plan.id
-                    ? "border border-zinc-300 bg-zinc-800"
-                    : "bg-zinc-800 border border-zinc-700"
+                    ? "border border-zinc-300 bg-zinc-700/60"
+                    : "bg-zinc-700/60 border border-zinc-600"
                 }`}
               >
                 <div>

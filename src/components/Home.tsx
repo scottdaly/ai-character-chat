@@ -179,7 +179,7 @@ export default function Home() {
               ) : (
                 <button
                   onClick={() => login()}
-                  className="flex flex-row items-center justify-center gap-2 rounded-xl bg-white border border-zinc-300 text-zinc-900 pl-8 pr-7 py-3 text-xl font-semibold hover:bg-zinc-100 cursor-pointer hover:scale-102 transition-all duration-300"
+                  className="flex flex-row items-center justify-center gap-2 rounded-xl bg-zinc-100 border border-zinc-300 text-zinc-900 pl-8 pr-7 py-3 text-xl font-semibold hover:bg-white cursor-pointer hover:scale-105 transition-all duration-300"
                 >
                   <span>Get Started</span>
                   <FiArrowRight className="text-xl" />

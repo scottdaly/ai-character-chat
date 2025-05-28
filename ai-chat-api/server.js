@@ -1512,7 +1512,7 @@ app.post(
   }
 );
 
-// Add endpoint to regenerate a message
+// Add endpoint to regenerate a message (in-place replacement)
 app.post(
   "/api/conversations/:conversationId/messages/:messageId/regenerate",
   authenticateToken,
@@ -1550,6 +1550,9 @@ app.post(
           .json({ error: "Can only regenerate assistant messages" });
       }
 
+      // Store original content for potential rollback
+      const originalContent = messageToRegenerate.content;
+
       // Find the parent user message
       if (!messageToRegenerate.parentId) {
         return res.status(400).json({
@@ -1568,9 +1571,6 @@ app.post(
 
       // Get the conversation history up to the parent user message
       const contextPath = await getMessagePath(parentUserMessage.id);
-
-      // Create a new child index for the regenerated message
-      const newChildIndex = await getNextChildIndex(parentUserMessage.id);
 
       // Prepare conversation history for AI APIs
       const messageHistory = [
@@ -1725,28 +1725,60 @@ app.post(
         throw new Error(`Unsupported model provider: ${modelProvider}`);
       }
 
-      // Save the new AI message
-      const newAiMessage = await Message.create({
+      // Update the existing message with new content (in-place replacement)
+      await messageToRegenerate.update({
         content: aiResponse,
-        role: "assistant",
-        UserId: req.user.id,
-        ConversationId: conversation.id,
-        CharacterId: conversation.CharacterId,
-        parentId: parentUserMessage.id,
-        childIndex: newChildIndex,
+        updatedAt: new Date(), // Update timestamp to reflect regeneration
       });
 
-      // Update conversation's last message
-      await conversation.update({
-        lastMessage: aiResponse.substring(0, 50),
-      });
+      // Update conversation's last message if this was the most recent message
+      const isLastMessage =
+        conversation.currentHeadId === messageToRegenerate.id;
+      if (isLastMessage) {
+        await conversation.update({
+          lastMessage: aiResponse.substring(0, 50),
+        });
+      }
 
-      res.json({ success: true, message: newAiMessage });
+      res.json({
+        success: true,
+        content: aiResponse,
+        message: messageToRegenerate.toJSON(),
+      });
     } catch (err) {
       console.error("Regenerate message error:", err);
-      res
-        .status(500)
-        .json({ error: err.message || "Failed to regenerate message" });
+
+      // Attempt to restore original content if message was already updated
+      try {
+        if (originalContent && messageToRegenerate) {
+          await messageToRegenerate.update({
+            content: originalContent,
+          });
+          console.log("Restored original message content after error");
+        }
+      } catch (restoreError) {
+        console.error("Failed to restore original content:", restoreError);
+      }
+
+      // Provide more specific error messages
+      let errorMessage = err.message || "Failed to regenerate message";
+      if (
+        errorMessage.includes("safety policies") ||
+        errorMessage.includes("SAFETY")
+      ) {
+        errorMessage =
+          "The AI declined to regenerate due to safety policies. Please try editing your previous message.";
+      } else if (
+        errorMessage.includes("quota exceeded") ||
+        errorMessage.includes("quota")
+      ) {
+        errorMessage = "AI service quota exceeded. Please try again later.";
+      } else if (errorMessage.includes("RECITATION")) {
+        errorMessage =
+          "The AI declined to regenerate due to potential copyright concerns. Please try a different approach.";
+      }
+
+      res.status(500).json({ error: errorMessage });
     }
   }
 );

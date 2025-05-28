@@ -67,7 +67,7 @@ export default function CreateCharacter() {
   };
 
   return (
-    <div className="fixed inset-0 bg-zinc-900 text-gray-100 overflow-y-auto">
+    <div className="fixed inset-0 text-gray-100 overflow-y-auto">
       <Navbar
         subscriptionTier={subscriptionTier}
         isLoadingSubscription={isLoadingSubscription}
@@ -78,7 +78,7 @@ export default function CreateCharacter() {
         <div className="flex items-center gap-1 mb-6">
           <button
             onClick={() => navigate("/dashboard")}
-            className="p-2 hover:bg-zinc-800 rounded-lg transition-colors"
+            className="p-2 cursor-pointer hover:bg-zinc-900 rounded-lg transition-colors"
           >
             <FiArrowLeft size={20} />
           </button>
@@ -96,7 +96,7 @@ export default function CreateCharacter() {
           <div className="flex flex-col gap-2">
             <label
               htmlFor="name"
-              className="text-zinc-400 text-sm font-semibold"
+              className="text-zinc-300 text-sm font-semibold"
             >
               Name *
             </label>
@@ -108,7 +108,7 @@ export default function CreateCharacter() {
               onChange={(e) =>
                 setNewCharacter({ ...newCharacter, name: e.target.value })
               }
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full bg-zinc-700/60 border border-zinc-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               required
             />
           </div>
@@ -132,7 +132,7 @@ export default function CreateCharacter() {
               }}
               maxLength={120}
               rows={3}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+              className="w-full bg-zinc-700/60 border border-zinc-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
             />
             <div className="flex justify-between">
               <div className="text-sm text-zinc-400">
@@ -157,7 +157,7 @@ export default function CreateCharacter() {
               onChange={(e) =>
                 setNewCharacter({ ...newCharacter, model: e.target.value })
               }
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg pl-3 pr-10 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-no-repeat bg-right"
+              className="w-full bg-zinc-700/60 border border-zinc-600 rounded-lg pl-3 pr-10 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-no-repeat bg-right"
               style={{
                 backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e")`,
                 backgroundPosition: "right 0.75rem center",
@@ -210,7 +210,7 @@ export default function CreateCharacter() {
                 })
               }
               rows={8}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+              className="w-full bg-zinc-700/60 border border-zinc-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
               required
             />
             <p className="text-sm text-zinc-500">
@@ -248,14 +248,14 @@ export default function CreateCharacter() {
             <button
               type="button"
               onClick={() => navigate("/dashboard")}
-              className="flex-1 px-6 py-3 rounded-lg bg-zinc-700 hover:bg-zinc-600 transition-colors font-medium"
+              className="flex-1 cursor-pointer px-6 py-3 rounded-lg text-zinc-100 border border-zinc-600 hover:bg-zinc-900 hover:border-zinc-900 hover:text-white transition-colors duration-300 ease-in-out font-medium"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isLoading}
-              className="flex-1 px-6 py-3 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:cursor-not-allowed transition-colors font-medium"
+              className="flex-1 cursor-pointer px-6 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed transition-colors duration-200 ease-in-out font-medium"
             >
               {isLoading ? "Creating..." : "Create Character"}
             </button>

@@ -14,31 +14,31 @@ interface CharacterCardProps {
 // Skeleton loader component for character cards
 export function CharacterCardSkeleton() {
   return (
-    <div className="flex flex-col justify-between rounded-lg p-4 border transition-colors h-[200px] bg-zinc-800/50 border-zinc-700/50 animate-pulse">
+    <div className="flex flex-col justify-between rounded-lg p-4 border transition-colors h-[200px] bg-zinc-700/50 border-zinc-600/50 animate-pulse">
       <div className="flex flex-col">
         <div className="flex justify-between items-start mb-2">
           {/* Title skeleton */}
-          <div className="h-6 bg-zinc-700 rounded w-3/4"></div>
+          <div className="h-6 bg-zinc-600 rounded w-3/4"></div>
           {/* Model badge skeleton */}
-          <div className="h-6 bg-zinc-700 rounded w-16"></div>
+          <div className="h-6 bg-zinc-600 rounded w-16"></div>
         </div>
 
         {/* Description skeleton */}
         <div className="space-y-2">
-          <div className="h-4 bg-zinc-700 rounded w-full"></div>
-          <div className="h-4 bg-zinc-700 rounded w-5/6"></div>
-          <div className="h-4 bg-zinc-700 rounded w-4/6"></div>
+          <div className="h-4 bg-zinc-600 rounded w-full"></div>
+          <div className="h-4 bg-zinc-600 rounded w-5/6"></div>
+          <div className="h-4 bg-zinc-600 rounded w-4/6"></div>
         </div>
       </div>
 
       <div className="flex items-center justify-between mt-2">
         <div className="text-sm">
           {/* Author skeleton */}
-          <div className="h-4 bg-zinc-700 rounded w-20"></div>
+          <div className="h-4 bg-zinc-600 rounded w-20"></div>
         </div>
         <div className="flex items-center justify-between text-sm">
           {/* Status indicators skeleton */}
-          <div className="h-4 bg-zinc-700 rounded w-12"></div>
+          <div className="h-4 bg-zinc-600 rounded w-12"></div>
         </div>
       </div>
     </div>
@@ -136,7 +136,7 @@ export default function CharacterCard({
     </>
   );
 
-  const commonClassName = `flex flex-col justify-between rounded-lg p-4 border transition-colors h-[200px] bg-zinc-800/50 border-zinc-700/50 cursor-pointer hover:bg-zinc-800/70`;
+  const commonClassName = `flex flex-col justify-between rounded-lg p-4 border transition-colors h-[200px] bg-zinc-700/50 border-zinc-600/50 cursor-pointer`;
 
   return (
     <div

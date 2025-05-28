@@ -344,7 +344,7 @@ export default function AccountSettings() {
   }, []);
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-zinc-900 overflow-y-auto dark-scrollbar">
+    <div className="flex-1 flex flex-col h-full overflow-y-auto dark-scrollbar">
       {/* Header */}
       <Navbar
         subscriptionTier={subscriptionTier}
@@ -357,7 +357,7 @@ export default function AccountSettings() {
           <h1 className="text-3xl font-bold mb-8">Account Settings</h1>
 
           {/* Profile Picture Section */}
-          <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-6 mb-6">
+          <div className="bg-zinc-700/60 border border-zinc-600 rounded-lg p-6 mb-6">
             <h2 className="text-xl font-semibold mb-4">Profile Picture</h2>
 
             <div className="flex items-center gap-6">
@@ -411,7 +411,7 @@ export default function AccountSettings() {
                   <FiUpload />
                   {isLoading ? "Uploading..." : "Upload New Picture"}
                 </button>
-                <p className="text-sm text-gray-400 mt-2">
+                <p className="text-sm text-zinc-300 mt-2">
                   Max file size: 5MB. Supported formats: JPG, PNG, GIF
                 </p>
               </div>
@@ -419,7 +419,7 @@ export default function AccountSettings() {
           </div>
 
           {/* Account Information */}
-          <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-6">
+          <div className="bg-zinc-700/60 border border-zinc-600 rounded-lg p-6">
             <h2 className="text-xl font-semibold mb-4">Account Information</h2>
             <div className="space-y-4">
               <div>

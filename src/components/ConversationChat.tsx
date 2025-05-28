@@ -164,6 +164,13 @@ export default function ConversationChat() {
   const [editingContent, setEditingContent] = useState<string>("");
   const [isEditLoading, setIsEditLoading] = useState(false);
 
+  // Regenerate message state
+  const [regeneratingMessageId, setRegeneratingMessageId] = useState<
+    string | null
+  >(null);
+  const [originalMessageContent, setOriginalMessageContent] =
+    useState<string>("");
+
   const {
     conversations: userConversations,
     isLoading: isLoadingUserConversations,
@@ -305,7 +312,7 @@ export default function ConversationChat() {
     }
   };
 
-  // Regenerate assistant message
+  // Regenerate assistant message with in-place replacement
   const handleRegenerateMessage = async (messageId: string) => {
     try {
       // Find the message to regenerate
@@ -322,21 +329,16 @@ export default function ConversationChat() {
         return;
       }
 
-      // Get all messages up to (but not including) the message to regenerate
-      const messagesUpToRegenerate = messages.slice(0, messageIndex);
-
-      // Get the user message that prompted this assistant response
-      const userMessage =
-        messagesUpToRegenerate[messagesUpToRegenerate.length - 1];
-      if (!userMessage || userMessage.role !== "user") {
+      // Prevent regenerating if already in progress
+      if (regeneratingMessageId) {
         setToast({
-          message: "Cannot find the user message that prompted this response",
+          message: "Please wait for the current regeneration to complete",
           type: "error",
         });
         return;
       }
 
-      // Make API call to regenerate the message
+      // Validate conversation state
       const conversationIdToUse = realConversationId || conversationId;
       if (!conversationIdToUse || conversationIdToUse.startsWith("temp-")) {
         setToast({
@@ -346,29 +348,95 @@ export default function ConversationChat() {
         return;
       }
 
+      // Start regeneration process
+      setRegeneratingMessageId(messageId);
+      setOriginalMessageContent(messageToRegenerate.content);
+
+      // Optimistically update the UI to show regenerating state
+      updateMessages((currentMessages) => {
+        const updatedMessages = [...currentMessages];
+        updatedMessages[messageIndex] = {
+          ...messageToRegenerate,
+          content: "Regenerating response...",
+        };
+        return updatedMessages;
+      });
+
       // Call the API to regenerate the message
-      await apiFetch(
+      const response = await apiFetch<{ content: string; message: any }>(
         `/api/conversations/${conversationIdToUse}/messages/${messageId}/regenerate`,
         {
           method: "POST",
         }
       );
 
-      // Reload messages to get the updated conversation tree
-      await loadMessages();
+      // Update the message with the new content
+      updateMessages((currentMessages) => {
+        const updatedMessages = [...currentMessages];
+        const targetIndex = updatedMessages.findIndex(
+          (msg) => msg.id === messageId
+        );
+        if (targetIndex !== -1) {
+          updatedMessages[targetIndex] = {
+            ...updatedMessages[targetIndex],
+            content: response.content,
+            createdAt: new Date(), // Update timestamp to reflect regeneration
+          };
+        }
+        return updatedMessages;
+      });
 
+      // Show success feedback
       setToast({
         message: "Message regenerated successfully",
         type: "success",
       });
     } catch (err) {
       console.error("Failed to regenerate message:", err);
+
+      // Restore original content on error
+      if (originalMessageContent) {
+        updateMessages((currentMessages) => {
+          const updatedMessages = [...currentMessages];
+          const targetIndex = updatedMessages.findIndex(
+            (msg) => msg.id === messageId
+          );
+          if (targetIndex !== -1) {
+            updatedMessages[targetIndex] = {
+              ...updatedMessages[targetIndex],
+              content: originalMessageContent,
+            };
+          }
+          return updatedMessages;
+        });
+      }
+
       const errorMessage =
         err instanceof Error ? err.message : "Failed to regenerate message";
+
+      // Provide more specific error messages
+      let displayMessage = errorMessage;
+      if (errorMessage.includes("safety policies")) {
+        displayMessage =
+          "The AI declined to regenerate due to safety policies. Please try editing your previous message.";
+      } else if (errorMessage.includes("quota exceeded")) {
+        displayMessage = "AI service quota exceeded. Please try again later.";
+      } else if (
+        errorMessage.includes("Network Error") ||
+        errorMessage.includes("fetch")
+      ) {
+        displayMessage =
+          "Connection error. Please check your internet connection and try again.";
+      }
+
       setToast({
-        message: errorMessage,
+        message: displayMessage,
         type: "error",
       });
+    } finally {
+      // Clean up regeneration state
+      setRegeneratingMessageId(null);
+      setOriginalMessageContent("");
     }
   };
 
@@ -867,7 +935,14 @@ export default function ConversationChat() {
                       </div>
                     </div>
                   ) : message.role === "assistant" ? (
-                    <MarkdownMessage content={message.content} />
+                    regeneratingMessageId === message.id ? (
+                      <div className="flex items-center gap-3 text-blue-400 italic">
+                        <IoRefresh className="h-4 w-4 animate-spin" />
+                        <span>Regenerating response...</span>
+                      </div>
+                    ) : (
+                      <MarkdownMessage content={message.content} />
+                    )
                   ) : (
                     <p className="whitespace-pre-wrap">{message.content}</p>
                   )}
@@ -886,14 +961,39 @@ export default function ConversationChat() {
                         <FiCopy className="h-4 w-4 transition-transform duration-300 ease-in-out group-hover/copy:scale-110" />
                       </button>
                     </Tooltip>
-                    <Tooltip text="Regenerate message" offsetSize="large">
+                    <Tooltip
+                      text={
+                        regeneratingMessageId === message.id
+                          ? "Regenerating..."
+                          : "Regenerate message"
+                      }
+                      offsetSize="large"
+                    >
                       <button
                         onClick={() => handleRegenerateMessage(message.id)}
-                        disabled={messagesLoading || isEditLoading}
-                        className="text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700 py-2 px-2 rounded-lg flex items-center gap-2 disabled:opacity-50 cursor-pointer transition-colors duration-300 ease-in-out group/regenerate"
-                        aria-label="Regenerate message"
+                        disabled={
+                          messagesLoading ||
+                          isEditLoading ||
+                          regeneratingMessageId !== null
+                        }
+                        className={`py-2 px-2 rounded-lg flex items-center gap-2 disabled:opacity-50 transition-colors duration-300 ease-in-out group/regenerate ${
+                          regeneratingMessageId === message.id
+                            ? "text-blue-400 bg-zinc-700 cursor-not-allowed"
+                            : "text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700 cursor-pointer"
+                        }`}
+                        aria-label={
+                          regeneratingMessageId === message.id
+                            ? "Regenerating message"
+                            : "Regenerate message"
+                        }
                       >
-                        <IoRefresh className="h-4 w-4 transition-transform duration-300 ease-in-out group-hover/regenerate:scale-110" />
+                        <IoRefresh
+                          className={`h-4 w-4 transition-transform duration-300 ease-in-out ${
+                            regeneratingMessageId === message.id
+                              ? "animate-spin"
+                              : "group-hover/regenerate:scale-110"
+                          }`}
+                        />
                       </button>
                     </Tooltip>
                   </div>
@@ -943,11 +1043,11 @@ export default function ConversationChat() {
         </div>
       </div>
 
-      <div className="flex p-4 border-t border-zinc-700 w-full items-center justify-center">
+      <div className="flex px-4 pb-4 w-full items-center justify-center">
         <div className="flex flex-col items-center justify-center w-full">
           <div className="flex gap-2 max-w-4xl w-full">
             <div
-              className="flex flex-1 flex-col px-3 py-2 gap-2 w-full bg-zinc-800 rounded-lg focus-within:ring-1 focus-within:ring-zinc-600 message-scrollbar cursor-text"
+              className="flex flex-1 flex-col px-3 py-2 gap-2 w-full bg-zinc-700 border border-zinc-600 rounded-lg focus-within:border-zinc-400/50 message-scrollbar cursor-text"
               onClick={(e) => {
                 // Check if the clicked element is a button or inside a button
                 const target = e.target as HTMLElement;
@@ -1031,7 +1131,7 @@ export default function ConversationChat() {
                         className="hidden"
                       />
                       <button
-                        className="text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700 border border-zinc-700 px-1.5 py-1.5 rounded-lg flex items-center gap-2 disabled:opacity-50 cursor-pointer transition-colors duration-300 ease-in-out"
+                        className="text-zinc-200 hover:text-white hover:bg-zinc-800 border border-zinc-500 hover:border-zinc-800 px-1.5 py-1.5 rounded-lg flex items-center gap-2 disabled:opacity-50 cursor-pointer transition-colors duration-300 ease-in-out group/image-upload"
                         onClick={(e) => {
                           e.stopPropagation();
                           fileInputRef.current?.click();
@@ -1039,7 +1139,7 @@ export default function ConversationChat() {
                         disabled={isUploading}
                         title="Upload images"
                       >
-                        <FiImage className="h-4 w-4" />
+                        <FiImage className="h-4 w-4 group-hover/image-upload:scale-110 transition-transform duration-300 ease-in-out" />
                       </button>
                     </>
                   )}
@@ -1049,7 +1149,7 @@ export default function ConversationChat() {
                     e.stopPropagation();
                     handleSend();
                   }}
-                  className="bg-zinc-700 hover:bg-zinc-600 text-zinc-100 px-3 py-3 rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:hover:bg-zinc-700 cursor-pointer transition-colors duration-300 ease-in-out"
+                  className="border border-zinc-500 hover:border-zinc-800 hover:bg-zinc-800 text-zinc-100 px-3 py-3 rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:hover:bg-zinc-700 disabled:hover:border-zinc-500 disabled:cursor-text cursor-pointer transition-colors duration-300 ease-in-out group/send disabled:group/send:cursor-text"
                   title="Send message"
                   disabled={
                     messagesLoading ||
@@ -1061,7 +1161,7 @@ export default function ConversationChat() {
                     (characterAccess !== null && !characterAccess.hasAccess)
                   }
                 >
-                  <HiArrowSmRight className="inline-block" />
+                  <HiArrowSmRight className="inline-block group-hover/send:scale-110 transition-transform duration-300 ease-in-out" />
                 </button>
               </div>
             </div>

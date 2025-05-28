@@ -84,7 +84,7 @@ const router = createBrowserRouter([
 
 function Layout() {
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-zinc-800">
       <Outlet />
     </div>
   );

@@ -120,7 +120,7 @@ export default function Dashboard() {
   });
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-zinc-900 overflow-y-auto dark-scrollbar">
+    <div className="flex-1 flex flex-col h-full  overflow-y-auto dark-scrollbar">
       {/* Header */}
       <Navbar
         subscriptionTier={subscriptionTier}
@@ -138,7 +138,7 @@ export default function Dashboard() {
             {/* Create Character Button */}
             <button
               onClick={handleCreateCharacter}
-              className="w-full font-semibold cursor-pointer md:w-auto my-8 md:my-0 bg-transparent from-transparent to-transparent border border-zinc-700 hover:bg-gradient-to-bl hover:from-zinc-800 hover:to-zinc-700 hover:scale-102 py-3 px-6 rounded-lg flex items-center justify-center gap-2 transition-all duration-300 ease-in-out"
+              className="w-full font-semibold cursor-pointer md:w-auto my-8 md:my-0 bg-transparent from-transparent to-transparent border border-zinc-600 hover:bg-gradient-to-bl hover:from-zinc-700 hover:to-zinc-600 hover:scale-102 py-3 px-6 rounded-lg flex items-center justify-center gap-2 transition-all duration-300 ease-in-out"
             >
               <FiPlus size={20} /> Create New Character
             </button>
@@ -216,10 +216,10 @@ export default function Dashboard() {
                 isContentVisible ? "opacity-100" : "opacity-0"
               }`}
             >
-              <p className="text-gray-400 text-center text-xl">
+              <p className="text-gray-300 text-center text-xl">
                 You don't have any characters yet
               </p>
-              <p className="text-gray-400 text-center text-xl">
+              <p className="text-gray-300 text-center text-xl">
                 Create one to get started or explore public characters
               </p>
               <div className="flex items-center gap-2">
@@ -231,7 +231,7 @@ export default function Dashboard() {
                 </button>
                 <Link
                   to="/explore"
-                  className="border border-zinc-800 hover:bg-zinc-800 text-white py-3 px-6 rounded-lg flex items-center justify-center gap-2 mt-2 cursor-pointer"
+                  className="border border-zinc-700 hover:bg-zinc-700 text-white py-3 px-6 rounded-lg flex items-center justify-center gap-2 mt-2 cursor-pointer"
                 >
                   Explore
                 </Link>
