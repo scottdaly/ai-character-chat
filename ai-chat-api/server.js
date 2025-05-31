@@ -849,6 +849,35 @@ const buildMessageTree = async (conversationId, currentHeadId) => {
   return { tree, currentPath: currentPath.map((p) => p.toJSON()) };
 };
 
+// Helper function to retry database operations
+const retryUserLookup = async (userId, maxRetries = 3, delay = 200) => {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const user = await User.findByPk(userId);
+      if (user) {
+        console.log(`[RETRY_DEBUG] User found on attempt ${i + 1}`);
+        return user;
+      }
+
+      if (i < maxRetries - 1) {
+        console.log(
+          `[RETRY_DEBUG] User not found on attempt ${
+            i + 1
+          }, retrying in ${delay}ms...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        delay *= 2; // Exponential backoff
+      }
+    } catch (error) {
+      console.error(`[RETRY_DEBUG] Database error on attempt ${i + 1}:`, error);
+      if (i === maxRetries - 1) throw error;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      delay *= 2;
+    }
+  }
+  return null;
+};
+
 // Auth Middleware - Define before routes
 const authenticateToken = async (req, res, next) => {
   try {
@@ -856,6 +885,14 @@ const authenticateToken = async (req, res, next) => {
     if (!token) return res.status(401).json({ error: "No token provided" });
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Enhanced debugging for token verification
+    console.log(`[TOKEN_DEBUG] Token verified:`, {
+      userId: decoded.userId,
+      isAdmin: !!decoded.isAdmin,
+      route: req.path,
+      timestamp: new Date().toISOString(),
+    });
 
     // Handle admin login
     if (decoded.isAdmin) {
@@ -868,14 +905,61 @@ const authenticateToken = async (req, res, next) => {
       return next();
     }
 
-    // Existing user lookup
-    const user = await User.findByPk(decoded.userId);
-    if (!user) return res.status(404).json({ error: "User not found" });
+    // Existing user lookup with enhanced debugging and retry mechanism
+    console.log(
+      `[TOKEN_DEBUG] Looking up user ${decoded.userId} in database...`
+    );
+
+    // Use retry mechanism for user lookup
+    const user = await retryUserLookup(decoded.userId);
+
+    if (!user) {
+      console.error(
+        `[TOKEN_DEBUG] CRITICAL: User ${decoded.userId} not found in database after retries!`
+      );
+      console.error(`[TOKEN_DEBUG] Route: ${req.path}, Method: ${req.method}`);
+
+      // Additional debugging: try to find user by other means
+      try {
+        const allUsers = await User.findAll({
+          attributes: ["id", "googleId", "email", "createdAt"],
+          limit: 10,
+          order: [["createdAt", "DESC"]],
+        });
+        console.log(
+          `[TOKEN_DEBUG] Recent users in database:`,
+          allUsers.map((u) => ({
+            id: u.id,
+            googleId: u.googleId,
+            email: u.email,
+            createdAt: u.createdAt,
+          }))
+        );
+      } catch (debugError) {
+        console.error(
+          `[TOKEN_DEBUG] Failed to query recent users:`,
+          debugError
+        );
+      }
+
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    console.log(`[TOKEN_DEBUG] User found successfully:`, {
+      userId: user.id,
+      email: user.email,
+      hasUsername: !!user.username,
+      createdAt: user.createdAt,
+    });
 
     req.user = user;
     next();
   } catch (err) {
     console.error("Token verification error:", err);
+    console.error(
+      `[TOKEN_DEBUG] Token verification failed for route ${req.path}:`,
+      err.message
+    );
     res.status(401).json({ error: "Invalid token" });
   }
 };
@@ -953,15 +1037,50 @@ passport.use(
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
-        const [user] = await User.findOrCreate({
+        console.log(
+          `[PASSPORT_DEBUG] Authenticating user with Google ID: ${profile.id}`
+        );
+
+        const [user, created] = await User.findOrCreate({
           where: { googleId: profile.id },
           defaults: {
             displayName: profile.displayName,
             email: profile.emails[0].value,
           },
         });
+
+        console.log(`[PASSPORT_DEBUG] User ${created ? "created" : "found"}:`, {
+          userId: user.id,
+          googleId: user.googleId,
+          email: user.email,
+          created: created,
+        });
+
+        // If user was just created, add a small delay to ensure database consistency
+        if (created) {
+          console.log(
+            `[PASSPORT_DEBUG] New user created, verifying database consistency...`
+          );
+
+          // Add a small delay and verify the user exists
+          await new Promise((resolve) => setTimeout(resolve, 100));
+
+          const verifyUser = await User.findByPk(user.id);
+          if (!verifyUser) {
+            console.error(
+              `[PASSPORT_DEBUG] CRITICAL: Newly created user ${user.id} not found after creation!`
+            );
+            return done(new Error("Database consistency error"));
+          }
+
+          console.log(
+            `[PASSPORT_DEBUG] New user verified in database successfully`
+          );
+        }
+
         done(null, user);
       } catch (err) {
+        console.error(`[PASSPORT_DEBUG] Authentication error:`, err);
         done(err);
       }
     }
@@ -1015,9 +1134,42 @@ app.get("/auth/google/callback", (req, res, next) => {
       return res.redirect(`${process.env.FRONTEND_URL}/login?error=no_user`);
     }
 
+    // Enhanced debugging for production issues
+    console.log(`[AUTH_DEBUG] User authenticated:`, {
+      userId: user.id,
+      googleId: user.googleId,
+      email: user.email,
+      hasUsername: !!user.username,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Verify user exists in database immediately after authentication
+    try {
+      const dbUser = await User.findByPk(user.id);
+      if (!dbUser) {
+        console.error(
+          `[AUTH_DEBUG] CRITICAL: User ${user.id} not found in database immediately after authentication!`
+        );
+        return res.redirect(
+          `${process.env.FRONTEND_URL}/login?error=db_sync_failed`
+        );
+      }
+      console.log(`[AUTH_DEBUG] User verified in database:`, {
+        dbUserId: dbUser.id,
+        dbGoogleId: dbUser.googleId,
+        createdAt: dbUser.createdAt,
+        updatedAt: dbUser.updatedAt,
+      });
+    } catch (dbError) {
+      console.error(`[AUTH_DEBUG] Database verification failed:`, dbError);
+      return res.redirect(`${process.env.FRONTEND_URL}/login?error=db_error`);
+    }
+
     const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, {
       expiresIn: "7d",
     });
+
+    console.log(`[AUTH_DEBUG] JWT token created for user ${user.id}`);
 
     // Check if there's a character redirect in the state
     let redirectToCharacter = null;
@@ -1040,12 +1192,15 @@ app.get("/auth/google/callback", (req, res, next) => {
       if (redirectToCharacter) {
         redirectUrl += `&redirect_to_character=${redirectToCharacter}`;
       }
+      console.log(`[AUTH_DEBUG] Redirecting to username setup: ${redirectUrl}`);
     } else if (redirectToCharacter) {
       // User has username and wants to go to specific character
       redirectUrl = `${process.env.FRONTEND_URL}/auth-success?token=${token}&redirect_to_character=${redirectToCharacter}`;
+      console.log(`[AUTH_DEBUG] Redirecting to character: ${redirectUrl}`);
     } else {
       // Normal auth success flow
       redirectUrl = `${process.env.FRONTEND_URL}/auth-success?token=${token}`;
+      console.log(`[AUTH_DEBUG] Redirecting to auth success: ${redirectUrl}`);
     }
 
     res.redirect(redirectUrl);

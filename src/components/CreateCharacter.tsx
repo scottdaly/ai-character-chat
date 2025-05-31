@@ -15,6 +15,7 @@ export default function CreateCharacter() {
   const [error, setError] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const [newCharacter, setNewCharacter] = useState<Omit<Character, "id">>({
     name: "",
@@ -43,27 +44,68 @@ export default function CreateCharacter() {
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Validate file type
-      if (!file.type.startsWith("image/")) {
-        setError("Please select a valid image file");
-        return;
-      }
+      processImageFile(file);
+    }
+  };
 
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        setError("Image file must be less than 5MB");
-        return;
-      }
+  // Process image file (shared between drag and click upload)
+  const processImageFile = (file: File) => {
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      setError("Please select a valid image file");
+      return;
+    }
 
-      setImageFile(file);
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Image file must be less than 5MB");
+      return;
+    }
 
-      // Create preview
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setImagePreview(e.target?.result as string);
-      };
-      reader.readAsDataURL(file);
-      setError(null);
+    setImageFile(file);
+
+    // Create preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setImagePreview(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+    setError(null);
+  };
+
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only set dragging to false if we're leaving the drop zone entirely
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    const imageFile = files.find((file) => file.type.startsWith("image/"));
+
+    if (imageFile) {
+      processImageFile(imageFile);
+    } else if (files.length > 0) {
+      setError("Please drop a valid image file");
     }
   };
 
@@ -202,8 +244,8 @@ export default function CreateCharacter() {
             </label>
 
             {imagePreview ? (
-              <div className="relative">
-                <div className="w-32 h-32 overflow-hidden rounded-lg border border-zinc-600">
+              <div className="relative w-32 h-32">
+                <div className="w-full h-full overflow-hidden rounded-lg border border-zinc-600">
                   <img
                     src={imagePreview}
                     alt="Character preview"
@@ -213,16 +255,30 @@ export default function CreateCharacter() {
                 <button
                   type="button"
                   onClick={removeImage}
-                  className="absolute -top-1 -right-1 p-0.5 bg-red-600 hover:bg-red-700 rounded-full text-white transition-colors"
+                  className="absolute -top-3 -right-4 cursor-pointer p-2 group/removePicture text-white transition-colors shadow-lg flex items-center justify-center"
                 >
-                  <FiX size={14} />
+                  <div className="flex items-center justify-center w-6 h-6 bg-zinc-700 border border-zinc-600 p-1.5 group-hover/removePicture:bg-red-700 group-hover/removePicture:border-red-700 rounded-full text-white transition-colors shadow-lg">
+                    <FiX size={16} />
+                  </div>
                 </button>
               </div>
             ) : (
-              <label className="w-full h-32 border-2 border-dashed border-zinc-600 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-zinc-500 hover:bg-zinc-800/30 transition-colors">
+              <label
+                className={`w-full h-32 border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer transition-colors ${
+                  isDragging
+                    ? "border-blue-500 bg-blue-500/10"
+                    : "border-zinc-600 hover:border-zinc-500 hover:bg-zinc-800/30"
+                }`}
+                onDragOver={handleDragOver}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
                 <FiUpload size={24} className="text-zinc-400 mb-2" />
                 <span className="text-zinc-400 text-sm">
-                  Click to upload image
+                  {isDragging
+                    ? "Drop image here"
+                    : "Click to upload or drag & drop"}
                 </span>
                 <span className="text-zinc-500 text-xs mt-1">
                   PNG, JPG up to 5MB

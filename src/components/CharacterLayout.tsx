@@ -51,31 +51,54 @@ export default function CharacterLayout() {
 
       {/* Conversation List Sidebar */}
       <div
-        className={`fixed md:static inset-y-0 left-0 w-72  border-r border-zinc-700 flex flex-col transform transition-transform duration-300 ease-in-out ${
+        className={`fixed md:static inset-y-0 left-0 w-72  border-r bg-zinc-900 border-zinc-700 flex flex-col transform transition-transform duration-300 ease-in-out ${
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         } md:translate-x-0 z-40`}
       >
         <div className="p-4">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-8">
             <button
               onClick={() => navigate("/dashboard")}
-              className="flex cursor-pointer items-center gap-2 text-zinc-400 hover:text-zinc-100 transition-colors duration-300 ease-in-out"
+              className="flex cursor-pointer items-center gap-2 text-zinc-100 instrument-serif-regular hover:text-zinc-100 transition-colors duration-300 ease-in-out text-3xl"
             >
-              <FiArrowLeft /> Back to Dashboard
+              <img src="/favicon.svg" alt="Nevermade" className="w-4 mt-1.5" />
+              Nevermade
             </button>
           </div>
           <div className="flex flex-row justify-between items-center">
-            <div className="flex flex-col">
-              <h2 className="text-lg font-semibold">{character?.name}</h2>
-              <p className="text-sm text-gray-400">
-                {character?.model && getModelAlias(character.model)}
-              </p>
+            <div className="flex flex-row items-center gap-3">
+              {/* Character Image */}
+              <div className="w-12 h-12 rounded-lg overflow-hidden border border-zinc-600 bg-zinc-700 flex-shrink-0">
+                {character?.image ? (
+                  <img
+                    src={character.image}
+                    alt={character.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-zinc-600 to-zinc-700 flex items-center justify-center">
+                    <span className="text-zinc-300 text-xs font-medium">
+                      {character?.name?.charAt(0)?.toUpperCase() || "?"}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Character Info */}
+              <div className="flex flex-col min-w-0 flex-1">
+                <h2 className="text-lg font-semibold truncate">
+                  {character?.name}
+                </h2>
+                <p className="text-sm text-gray-300 truncate">
+                  {character?.model && getModelAlias(character.model)}
+                </p>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-shrink-0">
               {isOwner && (
                 <button
                   onClick={() => setShowSettings(true)}
-                  className="p-2 rounded-lg text-gray-400 hover:bg-gray-600 transition-colors"
+                  className="p-2 rounded-lg text-gray-300 hover:bg-zinc-700 transition-colors cursor-pointer"
                   title="Edit character settings"
                 >
                   <FiSettings />
@@ -83,7 +106,7 @@ export default function CharacterLayout() {
               )}
               <button
                 onClick={() => setIsSidebarOpen(false)}
-                className="md:hidden p-2 rounded-lg text-gray-400 hover:bg-gray-600 transition-colors"
+                className="md:hidden p-2 rounded-lg text-gray-400 hover:bg-zinc-700 transition-colors"
               >
                 <FiX size={20} />
               </button>

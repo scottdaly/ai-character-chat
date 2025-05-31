@@ -6,6 +6,8 @@ export default function SetupUsername() {
   const [username, setUsername] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [isRetrying, setIsRetrying] = useState(false);
   const [redirectToCharacter, setRedirectToCharacter] = useState<string | null>(
     null
   );
@@ -38,16 +40,21 @@ export default function SetupUsername() {
     window.history.replaceState({}, document.title, window.location.pathname);
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setIsLoading(true);
+  const delay = (ms: number) =>
+    new Promise((resolve) => setTimeout(resolve, ms));
+
+  const handleSubmitWithRetry = async (
+    usernameToSubmit: string,
+    attempt = 1
+  ) => {
+    const maxRetries = 3;
+    const baseDelay = 1000; // 1 second
 
     try {
-      console.log("Sending username:", username);
+      console.log(`Sending username (attempt ${attempt}):`, usernameToSubmit);
       const response = await apiFetch("/api/setup-username", {
         method: "POST",
-        body: JSON.stringify({ username }),
+        body: JSON.stringify({ username: usernameToSubmit }),
       });
 
       console.log("Response:", response);
@@ -78,6 +85,10 @@ export default function SetupUsername() {
         // Continue anyway since username was set successfully
       }
 
+      // Reset retry count on success
+      setRetryCount(0);
+      setIsRetrying(false);
+
       // Redirect based on whether there's a character to redirect to
       if (redirectToCharacter) {
         const tempId = `temp-${Date.now()}`;
@@ -88,10 +99,67 @@ export default function SetupUsername() {
         console.log("SetupUsername - redirecting to dashboard");
         navigate("/dashboard");
       }
+
+      return true; // Success
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to set username");
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to set username";
+
+      // Check if this is a "User not found" error and we haven't exceeded max retries
+      if (errorMessage.includes("User not found") && attempt < maxRetries) {
+        console.log(
+          `User not found error, retrying in ${
+            baseDelay * attempt
+          }ms... (attempt ${attempt}/${maxRetries})`
+        );
+
+        setRetryCount(attempt);
+        setIsRetrying(true);
+        setError(
+          `Authentication still processing... Retrying (${attempt}/${maxRetries})`
+        );
+
+        await delay(baseDelay * attempt); // Progressive delay
+
+        return await handleSubmitWithRetry(usernameToSubmit, attempt + 1);
+      } else {
+        // Either not a "User not found" error, or we've exceeded max retries
+        setRetryCount(0);
+        setIsRetrying(false);
+
+        if (errorMessage.includes("User not found")) {
+          setError("Authentication failed. Please try signing in again.");
+
+          // After a delay, redirect back to home to try auth again
+          setTimeout(() => {
+            localStorage.removeItem("token");
+            window.location.href = "/";
+          }, 3000);
+        } else {
+          setError(errorMessage);
+        }
+
+        return false; // Failed
+      }
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setIsLoading(true);
+    setRetryCount(0);
+    setIsRetrying(false);
+
+    try {
+      await handleSubmitWithRetry(username);
+    } catch (err) {
+      // This shouldn't happen as handleSubmitWithRetry handles all errors
+      console.error("Unexpected error in handleSubmit:", err);
+      setError("An unexpected error occurred. Please try again.");
     } finally {
       setIsLoading(false);
+      setIsRetrying(false);
     }
   };
 
@@ -145,6 +213,7 @@ export default function SetupUsername() {
                 minLength={3}
                 maxLength={30}
                 required
+                disabled={isLoading}
               />
               <p className="mt-1 text-sm text-zinc-400">
                 This will be displayed as your creator name for characters you
@@ -152,7 +221,21 @@ export default function SetupUsername() {
               </p>
             </div>
 
-            {error && <div className="text-red-500 text-sm">{error}</div>}
+            {error && (
+              <div
+                className={`text-sm ${
+                  isRetrying ? "text-yellow-500" : "text-red-500"
+                }`}
+              >
+                {error}
+                {isRetrying && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="animate-spin rounded-full h-3 w-3 border-t-2 border-b-2 border-yellow-500"></span>
+                    <span className="text-xs">Please wait...</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             <button
               type="submit"
@@ -162,7 +245,9 @@ export default function SetupUsername() {
               {isLoading ? (
                 <div className="flex items-center justify-center gap-2">
                   <span className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></span>
-                  Setting username...
+                  {isRetrying
+                    ? `Retrying... (${retryCount}/3)`
+                    : "Setting username..."}
                 </div>
               ) : (
                 <span className="group-hover/continueButton:scale-105 transition-all duration-300 ease-in-out">

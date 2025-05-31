@@ -11,6 +11,7 @@ export default function Home() {
   const { user, login } = useAuth();
   const [characters, setCharacters] = useState<Character[]>([]);
   const [hoveredCard, setHoveredCard] = useState<number | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   // Redirect to dashboard if user is logged in
@@ -19,6 +20,43 @@ export default function Home() {
       navigate("/dashboard");
     }
   }, [user, navigate]);
+
+  // Check for authentication errors in URL params
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const error = urlParams.get("error");
+
+    if (error) {
+      let errorMessage;
+      switch (error) {
+        case "auth_failed":
+          errorMessage = "Authentication failed. Please try again.";
+          break;
+        case "no_user":
+          errorMessage =
+            "Unable to authenticate with Google. Please try again.";
+          break;
+        case "db_sync_failed":
+          errorMessage =
+            "There was a temporary issue creating your account. Please try signing in again.";
+          break;
+        case "db_error":
+          errorMessage =
+            "Database error occurred. Please try again in a moment.";
+          break;
+        default:
+          errorMessage = "An authentication error occurred. Please try again.";
+      }
+
+      setAuthError(errorMessage);
+
+      // Clear error from URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+
+      // Clear error after 10 seconds
+      setTimeout(() => setAuthError(null), 10000);
+    }
+  }, []);
 
   const slides = [
     {
@@ -205,6 +243,50 @@ export default function Home() {
       </nav>
 
       <main className="mx-auto relative">
+        {/* Authentication Error Banner */}
+        {authError && (
+          <div className="mx-auto max-w-[1560px] px-4 py-2">
+            <div className="bg-red-600/20 border border-red-500/50 rounded-lg p-4 mb-4">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0">
+                  <svg
+                    className="w-5 h-5 text-red-400 mt-0.5"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <p className="text-red-200 text-sm font-medium">
+                    {authError}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setAuthError(null)}
+                  className="flex-shrink-0 text-red-400 hover:text-red-300"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <section className="flex flex-col justify-around h-[calc(100vh-2rem)] md:h-[calc(100vh-5rem)] relative pb-6">
           <div className="flex flex-col items-center md:items-start w-full gap-5 md:gap-8 px-4 2xl:px-0 md:max-w-[1560px] mx-auto text-center md:text-start">
             <p className="text-6xl md:text-8xl text-zinc-100 relative z-10 font-semibold md:w-[50%] leading-16 md:leading-24 instrument-serif-regular tracking-wide">

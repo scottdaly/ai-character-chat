@@ -30,6 +30,7 @@ export default function CharacterSettings({
     character.image || null
   );
   const [removeExistingImage, setRemoveExistingImage] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   // For admin users, show all models. For regular users, we'll assume pro tier for now
   // In a real app, you'd want to pass the user's subscription tier as a prop
@@ -39,28 +40,69 @@ export default function CharacterSettings({
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Validate file type
-      if (!file.type.startsWith("image/")) {
-        setError("Please select a valid image file");
-        return;
-      }
+      processImageFile(file);
+    }
+  };
 
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        setError("Image file must be less than 5MB");
-        return;
-      }
+  // Process image file (shared between drag and click upload)
+  const processImageFile = (file: File) => {
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      setError("Please select a valid image file");
+      return;
+    }
 
-      setImageFile(file);
-      setRemoveExistingImage(false);
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Image file must be less than 5MB");
+      return;
+    }
 
-      // Create preview
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setImagePreview(e.target?.result as string);
-      };
-      reader.readAsDataURL(file);
-      setError(null);
+    setImageFile(file);
+    setRemoveExistingImage(false);
+
+    // Create preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setImagePreview(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+    setError(null);
+  };
+
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only set dragging to false if we're leaving the drop zone entirely
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    const imageFile = files.find((file) => file.type.startsWith("image/"));
+
+    if (imageFile) {
+      processImageFile(imageFile);
+    } else if (files.length > 0) {
+      setError("Please drop a valid image file");
     }
   };
 
@@ -172,7 +214,7 @@ export default function CharacterSettings({
               }
             }}
             maxLength={120}
-            className="w-full bg-zinc-700 rounded-lg px-4 py-2 h-24 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full bg-zinc-700 rounded-lg px-4 py-2 h-24 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
           />
           <div className="text-sm text-gray-400 text-right">
             {editedCharacter.description.length}/120 characters
@@ -186,8 +228,8 @@ export default function CharacterSettings({
           </label>
 
           {imagePreview ? (
-            <div className="relative">
-              <div className="w-full h-24 overflow-hidden rounded-lg border border-zinc-600">
+            <div className="relative w-24 h-24">
+              <div className="w-full h-full overflow-hidden rounded-lg border border-zinc-600">
                 <img
                   src={imagePreview}
                   alt="Character preview"
@@ -197,16 +239,30 @@ export default function CharacterSettings({
               <button
                 type="button"
                 onClick={removeImage}
-                className="absolute top-1 right-1 p-1 bg-red-600 hover:bg-red-700 rounded-full text-white transition-colors"
+                className="absolute -top-2 -right-3 cursor-pointer p-1 group/removePicture text-white transition-colors shadow-lg flex items-center justify-center"
               >
-                <FiX size={12} />
+                <div className="flex items-center justify-center w-5 h-5 bg-zinc-700 border border-zinc-600 p-1 group-hover/removePicture:bg-red-700 group-hover/removePicture:border-red-700 rounded-full text-white transition-colors shadow-lg">
+                  <FiX size={12} />
+                </div>
               </button>
             </div>
           ) : (
-            <label className="w-full h-24 border-2 border-dashed border-zinc-600 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-zinc-500 hover:bg-zinc-700/30 transition-colors">
+            <label
+              className={`w-full h-24 border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer transition-colors ${
+                isDragging
+                  ? "border-blue-500 bg-blue-500/10"
+                  : "border-zinc-600 hover:border-zinc-500 hover:bg-zinc-700/30"
+              }`}
+              onDragOver={handleDragOver}
+              onDragEnter={handleDragEnter}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
               <FiUpload size={20} className="text-zinc-400 mb-1" />
               <span className="text-zinc-400 text-xs">
-                Click to upload image
+                {isDragging
+                  ? "Drop image here"
+                  : "Click to upload or drag & drop"}
               </span>
               <input
                 type="file"
@@ -265,7 +321,7 @@ export default function CharacterSettings({
                 systemPrompt: e.target.value,
               })
             }
-            className="w-full bg-zinc-700 rounded-lg px-4 py-2 h-32 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full bg-zinc-700 rounded-lg px-4 py-2 h-32 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
           />
         </div>
 
