@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import CharacterCard, { CharacterCardSkeleton } from "./CharacterCard";
+import ControlledCarousel from "./ControlledCarousel";
 import { Character } from "../types";
 import { useAuth } from "../contexts/AuthContext";
 import Navbar from "./Navbar";
@@ -102,18 +103,28 @@ export default function Explore() {
         <div className="space-y-12">
           {/* Official Characters Section */}
           <section>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {showSkeletons ? (
-                // Show skeleton loaders with fade-in
-                <div className="contents animate-fadeIn">
+            {showSkeletons ? (
+              // Show skeleton loaders with fade-in
+              <div>
+                <h2 className="text-2xl font-semibold mb-6">
+                  Official Characters
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-fadeIn">
                   {renderSkeletonCards(6)}
                 </div>
-              ) : (
-                // Show actual content with fade-in
-                <div
-                  className={`contents transition-opacity duration-300 ${
-                    isContentVisible ? "opacity-100" : "opacity-0"
-                  }`}
+              </div>
+            ) : (
+              // Show actual content with fade-in
+              <div
+                className={`transition-opacity duration-300 ${
+                  isContentVisible ? "opacity-100" : "opacity-0"
+                }`}
+              >
+                <ControlledCarousel
+                  title="Official Characters"
+                  itemsPerView={{ mobile: 1, tablet: 2, desktop: 3 }}
+                  gap="1rem"
+                  className="mb-4"
                 >
                   {officialCharacters.map((character) => (
                     <div
@@ -127,9 +138,9 @@ export default function Explore() {
                       />
                     </div>
                   ))}
-                </div>
-              )}
-            </div>
+                </ControlledCarousel>
+              </div>
+            )}
           </section>
 
           {/* Public Characters Section */}

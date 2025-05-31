@@ -82,7 +82,7 @@ export default function Navbar({
           {/* Logo - completely hidden on mobile */}
           <Link
             to="/dashboard"
-            className="hidden md:flex flex-row items-center gap-1 text-3xl instrument-serif-regular"
+            className="hidden md:flex flex-row items-center gap-0.5 text-3xl instrument-serif-regular"
           >
             <svg
               width="155"
@@ -90,7 +90,7 @@ export default function Navbar({
               viewBox="0 0 155 267"
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
-              className="w-8 h-8"
+              className="w-7 h-7 mt-2"
             >
               <path
                 d="M142.666 3.46669C132.132 7.73336 119.466 16.9334 101.866 33.0667C76.2658 56.4 68.9324 62.2667 47.0658 76.8C18.2658 96 5.59909 109.867 2.53242 125.6L1.73242 130H8.26576C22.5324 130 35.0658 124.267 69.1991 102C80.7991 94.5334 95.4658 85.7334 101.866 82.4C114.532 76 134.399 69.2 144.932 67.6C151.066 66.8 151.999 66.2667 153.066 62.6667C155.066 56.1334 154.932 15.6 152.799 7.60002C151.866 3.86669 150.666 0.666685 150.266 0.800018C149.732 0.800018 146.399 2.00002 142.666 3.46669Z"
