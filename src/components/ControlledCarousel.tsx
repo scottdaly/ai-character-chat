@@ -26,7 +26,6 @@ const ControlledCarousel: React.FC<ControlledCarouselProps> = ({
   );
   const [isDragging, setIsDragging] = useState(false);
   const [startX, setStartX] = useState(0);
-  const [scrollLeft, setScrollLeft] = useState(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -69,7 +68,6 @@ const ControlledCarousel: React.FC<ControlledCarouselProps> = ({
 
   // Calculate maximum index
   const maxIndex = Math.max(0, children.length - itemsPerViewCurrent);
-  const totalPages = Math.ceil(children.length / itemsPerViewCurrent);
 
   // Navigation functions with infinite scrolling
   const goToNext = () => {
@@ -91,7 +89,6 @@ const ControlledCarousel: React.FC<ControlledCarouselProps> = ({
   const handleStart = (clientX: number) => {
     setIsDragging(true);
     setStartX(clientX);
-    setScrollLeft(currentIndex);
   };
 
   const handleMove = (clientX: number) => {
