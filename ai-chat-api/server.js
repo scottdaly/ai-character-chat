@@ -2971,5 +2971,103 @@ app.get(
   }
 );
 
+// Add endpoint to delete user account
+app.delete("/api/profile/delete", authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    console.log(`Starting account deletion for user ${userId}`);
+
+    // Start a transaction to ensure all-or-nothing deletion
+    const transaction = await sequelize.transaction();
+
+    try {
+      // First, clear any currentHeadId references that point to messages we're about to delete
+      const userConversations = await Conversation.findAll({
+        where: { UserId: userId },
+        attributes: ["id"],
+        transaction,
+      });
+
+      for (const conv of userConversations) {
+        await conv.update({ currentHeadId: null }, { transaction });
+      }
+
+      // Delete all user's messages first (due to foreign key constraints)
+      await Message.destroy({
+        where: { UserId: userId },
+        transaction,
+      });
+      console.log(`Deleted messages for user ${userId}`);
+
+      // Delete all user's conversations
+      await Conversation.destroy({
+        where: { UserId: userId },
+        transaction,
+      });
+      console.log(`Deleted conversations for user ${userId}`);
+
+      // Delete all characters created by the user
+      await Character.destroy({
+        where: { UserId: userId },
+        transaction,
+      });
+      console.log(`Deleted characters for user ${userId}`);
+
+      // Handle Stripe cleanup if user has a Stripe customer ID
+      if (req.user.stripeCustomerId) {
+        try {
+          // Cancel any active subscriptions
+          const subscriptions = await stripe.subscriptions.list({
+            customer: req.user.stripeCustomerId,
+            status: "active",
+          });
+
+          for (const subscription of subscriptions.data) {
+            await stripe.subscriptions.cancel(subscription.id);
+            console.log(
+              `Cancelled Stripe subscription ${subscription.id} for user ${userId}`
+            );
+          }
+
+          // Note: We don't delete the Stripe customer to maintain billing history
+          // This is a common practice for compliance and record-keeping
+          console.log(`Stripe cleanup completed for user ${userId}`);
+        } catch (stripeError) {
+          console.error(
+            `Stripe cleanup failed for user ${userId}:`,
+            stripeError
+          );
+          // Continue with account deletion even if Stripe cleanup fails
+        }
+      }
+
+      // Finally, delete the user record
+      await User.destroy({
+        where: { id: userId },
+        transaction,
+      });
+      console.log(`Deleted user record ${userId}`);
+
+      // Commit the transaction
+      await transaction.commit();
+
+      res.json({
+        success: true,
+        message: "Account successfully deleted",
+      });
+    } catch (error) {
+      // Rollback the transaction on error
+      await transaction.rollback();
+      throw error;
+    }
+  } catch (err) {
+    console.error("Account deletion error:", err);
+    res.status(500).json({
+      error: err.message || "Failed to delete account",
+    });
+  }
+});
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

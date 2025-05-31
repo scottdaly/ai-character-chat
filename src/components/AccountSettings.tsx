@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
-import { FiUpload, FiX, FiEdit2, FiLoader } from "react-icons/fi";
+import { FiUpload, FiX, FiEdit2, FiLoader, FiTrash2 } from "react-icons/fi";
 import Navbar from "./Navbar";
 import RemoveProfilePictureModal from "./RemoveProfilePictureModal";
 import ConfirmUsernameChangeModal from "./ConfirmUsernameChangeModal";
+import DeleteAccountModal from "./DeleteAccountModal";
 import Toast from "./Toast";
 
 export default function AccountSettings() {
@@ -13,6 +14,7 @@ export default function AccountSettings() {
     updateUser,
     subscriptionTier,
     isLoadingSubscription,
+    logout,
   } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [toast, setToast] = useState<{
@@ -28,6 +30,9 @@ export default function AccountSettings() {
     available: boolean;
     reason?: string;
   } | null>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const usernameInputRef = useRef<HTMLInputElement>(null);
   const checkTimeoutRef = useRef<NodeJS.Timeout>();
 
@@ -53,6 +58,7 @@ export default function AccountSettings() {
     const file = event.target.files?.[0];
     if (!file) {
       console.log("No file selected");
+      setUploadError(null);
       return;
     }
 
@@ -62,17 +68,24 @@ export default function AccountSettings() {
       size: file.size,
     });
 
+    // Clear any previous errors
+    setUploadError(null);
+
     // Validate file type
     if (!file.type.startsWith("image/")) {
       console.log("3a. Invalid file type");
-      setToast({ message: "Please select an image file", type: "error" });
+      const errorMessage = "Please select an image file";
+      setUploadError(errorMessage);
+      setToast({ message: errorMessage, type: "error" });
       return;
     }
 
     // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       console.log("3b. File too large");
-      setToast({ message: "Image must be less than 5MB", type: "error" });
+      const errorMessage = "Image must be less than 5MB";
+      setUploadError(errorMessage);
+      setToast({ message: errorMessage, type: "error" });
       return;
     }
 
@@ -118,6 +131,8 @@ export default function AccountSettings() {
                 type: "success",
               };
             });
+            // Clear any upload errors on success
+            setUploadError(null);
           } else {
             console.log("8a. Response validation failed:", {
               success: response.success,
@@ -127,11 +142,13 @@ export default function AccountSettings() {
           }
         } catch (uploadError) {
           console.error("Upload error:", uploadError);
+          const errorMessage =
+            uploadError instanceof Error
+              ? uploadError.message
+              : "Failed to update profile picture";
+          setUploadError(errorMessage);
           setToast({
-            message:
-              uploadError instanceof Error
-                ? uploadError.message
-                : "Failed to update profile picture",
+            message: errorMessage,
             type: "error",
           });
         }
@@ -139,18 +156,20 @@ export default function AccountSettings() {
 
       reader.onerror = (error) => {
         console.error("FileReader error:", error);
-        setToast({ message: "Failed to read the image file", type: "error" });
+        const errorMessage = "Failed to read the image file";
+        setUploadError(errorMessage);
+        setToast({ message: errorMessage, type: "error" });
       };
 
       console.log("4a. Starting to read file...");
       reader.readAsDataURL(file);
     } catch (err) {
       console.error("General error:", err);
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to update profile picture";
+      setUploadError(errorMessage);
       setToast({
-        message:
-          err instanceof Error
-            ? err.message
-            : "Failed to update profile picture",
+        message: errorMessage,
         type: "error",
       });
     } finally {
@@ -170,6 +189,9 @@ export default function AccountSettings() {
 
   const handleUploadClick = () => {
     console.log("Upload button clicked");
+    // Clear any previous upload errors when starting a new upload
+    setUploadError(null);
+
     // Create a new file input element
     const input = document.createElement("input");
     input.type = "file";
@@ -193,6 +215,8 @@ export default function AccountSettings() {
   const removeProfilePicture = async () => {
     try {
       setIsLoading(true);
+      // Clear any upload errors when removing picture
+      setUploadError(null);
 
       const response = await apiFetch("/api/profile", {
         method: "PUT",
@@ -343,6 +367,41 @@ export default function AccountSettings() {
     };
   }, []);
 
+  const handleDeleteAccount = async () => {
+    try {
+      setIsDeletingAccount(true);
+
+      const response = await apiFetch("/api/profile/delete", {
+        method: "DELETE",
+      });
+
+      if (response.success) {
+        setToast({
+          message: "Account deleted successfully",
+          type: "success",
+        });
+
+        // Log out user and redirect after a brief delay
+        setTimeout(() => {
+          logout();
+          window.location.href = "/";
+        }, 2000);
+      } else {
+        throw new Error(response.error || "Failed to delete account");
+      }
+    } catch (err) {
+      console.error("Account deletion error:", err);
+      setToast({
+        message:
+          err instanceof Error ? err.message : "Failed to delete account",
+        type: "error",
+      });
+      setIsDeleteModalOpen(false);
+    } finally {
+      setIsDeletingAccount(false);
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full overflow-y-auto dark-scrollbar">
       {/* Header */}
@@ -384,7 +443,7 @@ export default function AccountSettings() {
                     )} flex items-center justify-center text-white text-2xl font-medium relative`}
                   >
                     <div className="absolute inset-0 opacity-30 mix-blend-overlay">
-                      <svg className="w-full h-full">
+                      <svg className="w-full h-full rounded-full ">
                         <filter id="noise">
                           <feTurbulence
                             type="fractalNoise"
@@ -414,12 +473,15 @@ export default function AccountSettings() {
                 <p className="text-sm text-zinc-300 mt-2">
                   Max file size: 5MB. Supported formats: JPG, PNG, GIF
                 </p>
+                {uploadError && (
+                  <p className="text-sm text-red-400 mt-2">{uploadError}</p>
+                )}
               </div>
             </div>
           </div>
 
           {/* Account Information */}
-          <div className="bg-zinc-700/60 border border-zinc-600 rounded-lg p-6">
+          <div className="bg-zinc-700/60 border border-zinc-600 rounded-lg p-6 mb-6">
             <h2 className="text-xl font-semibold mb-4">Account Information</h2>
             <div className="space-y-4">
               <div>
@@ -500,6 +562,27 @@ export default function AccountSettings() {
               </div>
             </div>
           </div>
+
+          {/* Danger Zone */}
+          <div className="bg-zinc-700/60 border border-zinc-600 rounded-lg p-6 mb-6">
+            <div className="space-y-4">
+              <div className="flex flex-col">
+                <h3 className="text-xl font-semibold">Delete Account</h3>
+                <p className="text-sm text-zinc-300">
+                  Remove your account and all associated data. This action is
+                  irreversible.
+                </p>
+              </div>
+              <button
+                onClick={() => setIsDeleteModalOpen(true)}
+                disabled={isLoading || isDeletingAccount}
+                className="flex items-center cursor-pointer gap-2 px-4 py-2 border border-red-300/60 text-red-300 hover:bg-red-800 hover:border-red-800 hover:text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+              >
+                <FiTrash2 className="w-4 h-4" />
+                Delete Account
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -515,6 +598,13 @@ export default function AccountSettings() {
         onConfirm={handleUsernameConfirm}
         newUsername={newUsername.trim()}
         currentUsername={user?.username || ""}
+      />
+
+      <DeleteAccountModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={handleDeleteAccount}
+        isLoading={isDeletingAccount}
       />
 
       {toast && (
