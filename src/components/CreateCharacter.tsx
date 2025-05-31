@@ -203,7 +203,7 @@ export default function CreateCharacter() {
 
             {imagePreview ? (
               <div className="relative">
-                <div className="w-full h-32 overflow-hidden rounded-lg border border-zinc-600">
+                <div className="w-32 h-32 overflow-hidden rounded-lg border border-zinc-600">
                   <img
                     src={imagePreview}
                     alt="Character preview"
@@ -213,9 +213,9 @@ export default function CreateCharacter() {
                 <button
                   type="button"
                   onClick={removeImage}
-                  className="absolute top-2 right-2 p-1 bg-red-600 hover:bg-red-700 rounded-full text-white transition-colors"
+                  className="absolute -top-1 -right-1 p-0.5 bg-red-600 hover:bg-red-700 rounded-full text-white transition-colors"
                 >
-                  <FiX size={16} />
+                  <FiX size={14} />
                 </button>
               </div>
             ) : (
