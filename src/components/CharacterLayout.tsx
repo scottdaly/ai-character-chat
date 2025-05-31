@@ -1,7 +1,7 @@
 // src/components/CharacterLayout.tsx
 import { useState, useEffect } from "react";
 import { Outlet, useNavigate, useParams } from "react-router-dom";
-import { FiArrowLeft, FiSettings, FiMenu, FiX } from "react-icons/fi";
+import { FiSettings, FiMenu, FiX } from "react-icons/fi";
 import ConversationList from "./ConversationList";
 import { useCharacter } from "../api/characters";
 import { useAuth } from "../contexts/AuthContext";
