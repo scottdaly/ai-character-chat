@@ -2782,20 +2782,42 @@ app.post("/api/create-subscription", authenticateToken, async (req, res) => {
 app.get("/api/subscription-status", authenticateToken, async (req, res) => {
   try {
     if (req.user.stripeCustomerId) {
-      const subscriptions = await stripe.subscriptions.list({
-        customer: req.user.stripeCustomerId,
-        status: "active",
-        limit: 1,
-      });
-
-      if (subscriptions.data.length > 0) {
-        const subscription = subscriptions.data[0];
-        res.json({
-          status: subscription.status,
-          tier: subscription.items.data[0].price.nickname || "pro",
-          currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+      try {
+        const subscriptions = await stripe.subscriptions.list({
+          customer: req.user.stripeCustomerId,
+          status: "active",
+          limit: 1,
         });
-        return;
+
+        if (subscriptions.data.length > 0) {
+          const subscription = subscriptions.data[0];
+          res.json({
+            status: subscription.status,
+            tier: subscription.items.data[0].price.nickname || "pro",
+            currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+          });
+          return;
+        }
+      } catch (stripeError) {
+        console.error("Stripe subscription check failed:", stripeError);
+
+        // If the customer doesn't exist in Stripe, clear the invalid customer ID
+        if (
+          stripeError.code === "resource_missing" &&
+          stripeError.param === "customer"
+        ) {
+          console.log(
+            `Clearing invalid Stripe customer ID for user ${req.user.id}`
+          );
+          await req.user.update({
+            stripeCustomerId: null,
+            subscriptionStatus: "free",
+            subscriptionTier: "free",
+            subscriptionEndsAt: null,
+          });
+        }
+
+        // Continue to return free tier status instead of throwing an error
       }
     }
 
