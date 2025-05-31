@@ -1,7 +1,7 @@
 // src/api/characters.ts
-import { useState, useEffect } from 'react';
-import { useAuth } from '../contexts/AuthContext';
-import { Character } from '../types';
+import { useState, useEffect } from "react";
+import { useAuth } from "../contexts/AuthContext";
+import { Character } from "../types";
 
 export const useCharacter = (characterId: string) => {
   const { apiFetch } = useAuth();
@@ -15,7 +15,9 @@ export const useCharacter = (characterId: string) => {
       const data = await apiFetch<Character>(`/api/characters/${characterId}`);
       setCharacter(data);
     } catch (err) {
-      setError(err instanceof Error ? err : new Error('Failed to load character'));
+      setError(
+        err instanceof Error ? err : new Error("Failed to load character")
+      );
     } finally {
       setIsLoading(false);
     }
@@ -39,29 +41,53 @@ export const useCharacters = () => {
   const getCharacters = async () => {
     try {
       setIsLoading(true);
-      const data = await apiFetch<Character[]>('/api/characters');
+      const data = await apiFetch<Character[]>("/api/characters");
       setCharacters(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error('Failed to load characters:', err);
-      setError(err instanceof Error ? err : new Error('Failed to load characters'));
+      console.error("Failed to load characters:", err);
+      setError(
+        err instanceof Error ? err : new Error("Failed to load characters")
+      );
       setCharacters([]); // Ensure characters is always an array
     } finally {
       setIsLoading(false);
     }
   };
 
-  const createCharacter = async (character: Omit<Character, 'id' | 'userId'>) => {
+  const createCharacter = async (
+    character: Omit<Character, "id" | "userId"> | FormData
+  ) => {
     try {
       setIsLoading(true);
-      const newCharacter = await apiFetch<Character>('/api/characters', {
-        method: 'POST',
-        body: JSON.stringify(character),
-      });
-      setCharacters(prev => [...prev, newCharacter]);
+
+      let requestOptions: RequestInit;
+
+      if (character instanceof FormData) {
+        // Handle FormData for image uploads
+        requestOptions = {
+          method: "POST",
+          body: character,
+          // Don't set Content-Type header for FormData - browser will set it with boundary
+        };
+      } else {
+        // Handle regular JSON data
+        requestOptions = {
+          method: "POST",
+          body: JSON.stringify(character),
+        };
+      }
+
+      const newCharacter = await apiFetch<Character>(
+        "/api/characters",
+        requestOptions
+      );
+      setCharacters((prev) => [...prev, newCharacter]);
       return newCharacter;
     } catch (err) {
-      console.error('Failed to create character:', err);
-      setError(err instanceof Error ? err : new Error('Failed to create character'));
+      console.error("Failed to create character:", err);
+      setError(
+        err instanceof Error ? err : new Error("Failed to create character")
+      );
       throw err;
     } finally {
       setIsLoading(false);

@@ -4,14 +4,12 @@ import { FcGoogle } from "react-icons/fc";
 import { useAuth } from "../contexts/AuthContext";
 import { Link, useNavigate } from "react-router-dom";
 import { Character } from "../types";
-import { getModelAlias } from "./CharacterCard";
 import { FiArrowRight } from "react-icons/fi";
 import InfiniteCarousel from "./InfiniteCarousel";
 
 export default function Home() {
   const { user, login } = useAuth();
   const [characters, setCharacters] = useState<Character[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [hoveredCard, setHoveredCard] = useState<number | null>(null);
   const navigate = useNavigate();
 
@@ -28,60 +26,70 @@ export default function Home() {
       title: "Software Engineer",
       subtitle: "Helps you write code",
       image: "profiles/profile1.jpg",
+      characterName: "Software Engineer",
     },
     {
       id: 2,
       title: "Product Manager",
       subtitle: "Create a product roadmap",
       image: "profiles/product_manager.png",
+      characterName: "Product Manager",
     },
     {
       id: 3,
       title: "Yoga Instructor",
       subtitle: "Help you get fit and healthy",
       image: "profiles/yoga_instructor.png",
+      characterName: "Yoga Instructor",
     },
     {
       id: 4,
       title: "Chef",
       subtitle: "Cooking up delicious meals",
       image: "profiles/chef.png",
+      characterName: "Chef",
     },
     {
       id: 5,
       title: "Project Manager",
       subtitle: "Help you outline and manage projects",
       image: "profiles/project_manager.png",
+      characterName: "Project Manager",
     },
     {
       id: 6,
       title: "Personal Trainer",
       subtitle: "Get fit and healthy",
       image: "profiles/personal_trainer.png",
+      characterName: "Personal Trainer",
     },
     {
       id: 7,
       title: "Web Developer",
       subtitle: "Helps you write code",
       image: "profiles/web_developer.png",
+      characterName: "Web Developer",
     },
     {
       id: 8,
       title: "Marketing Manager",
       subtitle: "Create a marketing plan",
       image: "profiles/marketing_manager.png",
+      characterName: "Marketing Manager",
     },
     {
       id: 9,
       title: "Financial Planner",
       subtitle: "Help you plan your finances",
       image: "profiles/finance_manager.png",
+      characterName: "Financial Planner",
     },
     {
       id: 10,
       title: "Therapist",
       subtitle: "Talk about your life",
       image: "profiles/therapist.png",
+      characterName: "Therapist",
     },
   ];
 
@@ -99,13 +107,50 @@ export default function Home() {
       } catch (error) {
         console.error("Failed to load characters:", error);
         setCharacters([]);
-      } finally {
-        setIsLoading(false);
       }
     };
 
+    // Clean up any old debugging localStorage items
+    localStorage.removeItem("debug_character_click");
+    localStorage.removeItem("debug_redirect_url");
+
     loadCharacters();
   }, []);
+
+  // Function to find character by name
+  const findCharacterByName = (characterName: string) => {
+    return characters.find((char) => char.name === characterName);
+  };
+
+  // Function to handle card click
+  const handleCardClick = (slide: (typeof slides)[0]) => {
+    if (!user) {
+      // Store the intended character in URL params before login
+      const character = findCharacterByName(slide.characterName);
+
+      if (character) {
+        // Redirect to login with the intended character ID
+        const redirectUrl = `${
+          import.meta.env.VITE_API_URL
+        }/auth/google?redirect_to_character=${character.id}`;
+
+        window.location.href = redirectUrl;
+      } else {
+        // Fallback to normal login
+        login();
+      }
+      return;
+    }
+
+    const character = findCharacterByName(slide.characterName);
+    if (character) {
+      const tempId = `temp-${Date.now()}`;
+      navigate(`/dashboard/characters/${character.id}/conversations/${tempId}`);
+    } else {
+      // Fallback to dashboard if character not found
+      navigate("/dashboard");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-zinc-950 text-gray-100">
@@ -160,7 +205,7 @@ export default function Home() {
       </nav>
 
       <main className="mx-auto relative">
-        <section className="flex flex-col justify-around h-[calc(100vh-2rem)] md:h-[calc(100vh-5rem)] relative">
+        <section className="flex flex-col justify-around h-[calc(100vh-2rem)] md:h-[calc(100vh-5rem)] relative pb-6">
           <div className="flex flex-col items-center md:items-start w-full gap-5 md:gap-8 px-4 2xl:px-0 md:max-w-[1560px] mx-auto text-center md:text-start">
             <p className="text-6xl md:text-8xl text-zinc-100 relative z-10 font-semibold md:w-[50%] leading-16 md:leading-24 instrument-serif-regular tracking-wide">
               AI Companions to Help You Do Anything
@@ -209,8 +254,7 @@ export default function Home() {
                   setHoveredCard(null);
                 }}
                 onClick={() => {
-                  console.log("clicked card parent");
-                  navigate(`/characters/${slide.id}`);
+                  handleCardClick(slide);
                 }}
               >
                 {slide.id % 2 === 1 && (
@@ -244,111 +288,6 @@ export default function Home() {
               </article>
             ))}
           </InfiniteCarousel>
-        </section>
-
-        <section className="mt-48 mb-16">
-          {isLoading ? (
-            <div className="flex justify-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {characters.map((character) =>
-                user ? (
-                  <Link
-                    key={character.id}
-                    to={`/dashboard/characters/${character.id}`}
-                    className="p-6 bg-zinc-800 rounded-xl hover:bg-zinc-700 transition-colors"
-                  >
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <h3 className="text-xl font-semibold">
-                          {character.name}
-                        </h3>
-                        <p className="text-sm text-gray-400">
-                          {character.User?.isOfficial ? (
-                            <span className="flex items-center gap-1">
-                              by{" "}
-                              <span className="text-purple-500 font-medium">
-                                Nevermade
-                              </span>
-                              <span className="inline-block px-1.5 py-0.5 bg-purple-600/20 text-purple-400 text-xs rounded-full">
-                                Official
-                              </span>
-                            </span>
-                          ) : (
-                            <span>
-                              by @{character.User?.username || "unknown"}
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <span
-                          className={`px-2 py-1 rounded ${
-                            character.User?.isOfficial
-                              ? "bg-purple-600/20 text-purple-400"
-                              : "bg-gray-700 text-gray-400"
-                          }`}
-                        >
-                          {getModelAlias(character.model)}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="text-gray-400 mb-4 line-clamp-3">
-                      {character.description}
-                    </p>
-                  </Link>
-                ) : (
-                  <button
-                    key={character.id}
-                    onClick={() => login()}
-                    className="p-6 bg-zinc-800 rounded-xl hover:bg-zinc-700 transition-colors text-left w-full"
-                  >
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <h3 className="text-xl font-semibold">
-                          {character.name}
-                        </h3>
-                        <p className="text-sm text-gray-400">
-                          {character.User?.isOfficial ? (
-                            <span className="flex items-center gap-1">
-                              by{" "}
-                              <span className="text-purple-400 font-medium">
-                                Nevermade
-                              </span>
-                              <span className="inline-block px-1.5 py-0.5 bg-purple-500/20 text-purple-400 text-xs rounded-full">
-                                Official
-                              </span>
-                            </span>
-                          ) : (
-                            <span>
-                              by @{character.User?.username || "unknown"}
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                    </div>
-                    <p className="text-gray-400 mb-4 line-clamp-3">
-                      {character.description}
-                    </p>
-                    <div className="flex items-center justify-between text-sm">
-                      <span
-                        className={`px-2 py-1 rounded ${
-                          character.User?.isOfficial
-                            ? "bg-purple-500/20 text-purple-400"
-                            : "bg-gray-700 text-gray-400"
-                        }`}
-                      >
-                        {getModelAlias(character.model)}
-                      </span>
-                      <span className="text-purple-400">Sign in to chat →</span>
-                    </div>
-                  </button>
-                )
-              )}
-            </div>
-          )}
         </section>
       </main>
     </div>

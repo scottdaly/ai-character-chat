@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { FiArrowLeft } from "react-icons/fi";
+import { FiArrowLeft, FiUpload, FiX } from "react-icons/fi";
 import { useAuth } from "../contexts/AuthContext";
 import { useCharacters } from "../api/characters";
 import { Character } from "../types";
@@ -13,6 +13,8 @@ export default function CreateCharacter() {
   const { createCharacter } = useCharacters();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   const [newCharacter, setNewCharacter] = useState<Omit<Character, "id">>({
     name: "",
@@ -37,6 +39,40 @@ export default function CreateCharacter() {
     (subscriptionTier as "free" | "pro") || "free"
   );
 
+  // Handle image file selection
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith("image/")) {
+        setError("Please select a valid image file");
+        return;
+      }
+
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setError("Image file must be less than 5MB");
+        return;
+      }
+
+      setImageFile(file);
+
+      // Create preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setImagePreview(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+      setError(null);
+    }
+  };
+
+  // Remove selected image
+  const removeImage = () => {
+    setImageFile(null);
+    setImagePreview(null);
+  };
+
   const handleCreateCharacter = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -54,7 +90,22 @@ export default function CreateCharacter() {
 
     try {
       setIsLoading(true);
-      await createCharacter(newCharacter);
+
+      // Create FormData for character with optional image
+      const formData = new FormData();
+      formData.append("name", newCharacter.name);
+      formData.append("description", newCharacter.description);
+      formData.append("model", newCharacter.model);
+      formData.append("systemPrompt", newCharacter.systemPrompt);
+      formData.append("isPublic", newCharacter.isPublic.toString());
+
+      if (imageFile) {
+        formData.append("image", imageFile);
+      }
+
+      // Note: This assumes the createCharacter function can handle FormData
+      // You may need to update the API call to handle file uploads
+      await createCharacter(formData);
       navigate("/dashboard");
     } catch (error) {
       console.error("Failed to create character:", error);
@@ -142,6 +193,53 @@ export default function CreateCharacter() {
                 {newCharacter.description.length}/120 characters
               </div>
             </div>
+          </div>
+
+          {/* Image Upload Field */}
+          <div className="flex flex-col gap-2">
+            <label className="text-zinc-400 text-sm font-semibold">
+              Character Image (Optional)
+            </label>
+
+            {imagePreview ? (
+              <div className="relative">
+                <div className="w-full h-32 overflow-hidden rounded-lg border border-zinc-600">
+                  <img
+                    src={imagePreview}
+                    alt="Character preview"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={removeImage}
+                  className="absolute top-2 right-2 p-1 bg-red-600 hover:bg-red-700 rounded-full text-white transition-colors"
+                >
+                  <FiX size={16} />
+                </button>
+              </div>
+            ) : (
+              <label className="w-full h-32 border-2 border-dashed border-zinc-600 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-zinc-500 hover:bg-zinc-800/30 transition-colors">
+                <FiUpload size={24} className="text-zinc-400 mb-2" />
+                <span className="text-zinc-400 text-sm">
+                  Click to upload image
+                </span>
+                <span className="text-zinc-500 text-xs mt-1">
+                  PNG, JPG up to 5MB
+                </span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  className="hidden"
+                />
+              </label>
+            )}
+
+            <p className="text-sm text-zinc-500">
+              Add an optional image that will be displayed on the character
+              card.
+            </p>
           </div>
 
           <div className="flex flex-col gap-2">

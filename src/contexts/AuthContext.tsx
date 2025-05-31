@@ -68,8 +68,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const apiFetch = useCallback(
     async <T = any,>(url: string, options: RequestInit = {}): Promise<T> => {
       const token = localStorage.getItem("token");
+
+      // Don't set Content-Type for FormData - let browser set it with boundary
+      const isFormData = options.body instanceof FormData;
+
       const headers = {
-        "Content-Type": "application/json",
+        ...(!isFormData && { "Content-Type": "application/json" }),
         ...options.headers,
         ...(token && { Authorization: `Bearer ${token}` }),
       };

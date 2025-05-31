@@ -1,39 +1,70 @@
 // src/components/AuthSuccess.tsx
-import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function AuthSuccess() {
   const navigate = useNavigate();
   const { apiFetch } = useAuth();
+  const hasProcessed = useRef(false);
 
   useEffect(() => {
+    // Prevent double execution in React development mode
+    if (hasProcessed.current) {
+      return;
+    }
+
     const authenticateUser = async () => {
       try {
-        // Get token from URL
-        const token = new URLSearchParams(window.location.search).get('token');
+        // Get token and redirect parameters from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get("token");
+        const redirectToCharacter = urlParams.get("redirect_to_character");
+
         if (!token) {
-          throw new Error('No token found');
+          throw new Error("No token found");
         }
+
+        // Mark as processed to prevent double execution
+        hasProcessed.current = true;
 
         // Store token
-        localStorage.setItem('token', token);
-
-        // Clear token from URL
-        window.history.replaceState({}, document.title, window.location.pathname);
+        localStorage.setItem("token", token);
 
         // Verify token and get user data
-        const userData = await apiFetch('/api/me');
-        
-        // Redirect based on username status
+        const userData = await apiFetch("/api/me");
+
+        // Clear parameters from URL only after successful processing
+        window.history.replaceState(
+          {},
+          document.title,
+          window.location.pathname
+        );
+
+        // Redirect based on username status and character redirect
         if (!userData.username) {
-          navigate('/setup-username');
+          // User needs to set up username first
+          if (redirectToCharacter) {
+            navigate(
+              `/setup-username?redirect_to_character=${redirectToCharacter}`
+            );
+          } else {
+            navigate("/setup-username");
+          }
+        } else if (redirectToCharacter) {
+          // User has username and wants to go to specific character
+          const tempId = `temp-${Date.now()}`;
+          const characterUrl = `/dashboard/characters/${redirectToCharacter}/conversations/${tempId}`;
+
+          // Use window.location.href to avoid race conditions with React Router
+          window.location.href = characterUrl;
         } else {
-          navigate('/dashboard');
+          // Normal flow to dashboard
+          navigate("/dashboard");
         }
       } catch (error) {
-        console.error('Authentication failed:', error);
-        navigate('/');
+        console.error("Authentication failed:", error);
+        navigate("/");
       }
     };
 

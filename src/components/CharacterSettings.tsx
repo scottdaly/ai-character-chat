@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FiX } from "react-icons/fi";
+import { FiX, FiUpload } from "react-icons/fi";
 import { Character } from "../types";
 import { useAuth } from "../contexts/AuthContext";
 import { getModelGroups } from "../config/models";
@@ -25,10 +25,51 @@ export default function CharacterSettings({
   });
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(
+    character.image || null
+  );
+  const [removeExistingImage, setRemoveExistingImage] = useState(false);
 
   // For admin users, show all models. For regular users, we'll assume pro tier for now
   // In a real app, you'd want to pass the user's subscription tier as a prop
   const modelGroups = getModelGroups(user?.isAdmin ? "pro" : "pro");
+
+  // Handle image file selection
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith("image/")) {
+        setError("Please select a valid image file");
+        return;
+      }
+
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setError("Image file must be less than 5MB");
+        return;
+      }
+
+      setImageFile(file);
+      setRemoveExistingImage(false);
+
+      // Create preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setImagePreview(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+      setError(null);
+    }
+  };
+
+  // Remove image
+  const removeImage = () => {
+    setImageFile(null);
+    setImagePreview(null);
+    setRemoveExistingImage(true);
+  };
 
   const handleSave = async () => {
     try {
@@ -46,15 +87,36 @@ export default function CharacterSettings({
         return;
       }
 
-      await apiFetch(
-        user?.isAdmin
-          ? `/api/admin/characters/${character.id}`
-          : `/api/characters/${character.id}`,
-        {
+      const endpoint = user?.isAdmin
+        ? `/api/admin/characters/${character.id}`
+        : `/api/characters/${character.id}`;
+
+      if (imageFile || removeExistingImage) {
+        // Use FormData if there's an image to upload or remove
+        const formData = new FormData();
+        formData.append("name", editedCharacter.name);
+        formData.append("description", editedCharacter.description);
+        formData.append("model", editedCharacter.model);
+        formData.append("systemPrompt", editedCharacter.systemPrompt);
+        formData.append("isPublic", editedCharacter.isPublic.toString());
+
+        if (imageFile) {
+          formData.append("image", imageFile);
+        } else if (removeExistingImage) {
+          formData.append("removeImage", "true");
+        }
+
+        await apiFetch(endpoint, {
+          method: "PUT",
+          body: formData,
+        });
+      } else {
+        // Use JSON if no image changes
+        await apiFetch(endpoint, {
           method: "PUT",
           body: JSON.stringify(editedCharacter),
-        }
-      );
+        });
+      }
 
       onSave();
     } catch (err) {
@@ -115,6 +177,45 @@ export default function CharacterSettings({
           <div className="text-sm text-gray-400 text-right">
             {editedCharacter.description.length}/120 characters
           </div>
+        </div>
+
+        {/* Image Upload Field */}
+        <div className="flex flex-col my-4 gap-1">
+          <label className="text-zinc-400 text-sm font-semibold">
+            Character Image
+          </label>
+
+          {imagePreview ? (
+            <div className="relative">
+              <div className="w-full h-24 overflow-hidden rounded-lg border border-zinc-600">
+                <img
+                  src={imagePreview}
+                  alt="Character preview"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={removeImage}
+                className="absolute top-1 right-1 p-1 bg-red-600 hover:bg-red-700 rounded-full text-white transition-colors"
+              >
+                <FiX size={12} />
+              </button>
+            </div>
+          ) : (
+            <label className="w-full h-24 border-2 border-dashed border-zinc-600 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-zinc-500 hover:bg-zinc-700/30 transition-colors">
+              <FiUpload size={20} className="text-zinc-400 mb-1" />
+              <span className="text-zinc-400 text-xs">
+                Click to upload image
+              </span>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageChange}
+                className="hidden"
+              />
+            </label>
+          )}
         </div>
 
         <div className="flex flex-col my-4 gap-1">

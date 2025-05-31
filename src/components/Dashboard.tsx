@@ -212,28 +212,34 @@ export default function Dashboard() {
             </div>
           ) : (
             <div
-              className={`flex-1 flex flex-col items-center justify-center gap-2 transition-opacity duration-300 ${
+              className={`flex-1 flex flex-col items-center justify-center gap-3 transition-opacity duration-300 py-12 ${
                 isContentVisible ? "opacity-100" : "opacity-0"
               }`}
             >
-              <p className="text-gray-300 text-center text-xl">
-                You don't have any characters yet
-              </p>
-              <p className="text-gray-300 text-center text-xl">
-                Create one to get started or explore public characters
-              </p>
+              <div className="flex flex-col items-center justify-center">
+                <p className="text-gray-100 text-center text-3xl font-bold leading-[2rem]">
+                  You don't have any characters yet
+                </p>
+                <p className="text-gray-300 text-center text-lg">
+                  Create one to get started or explore public characters
+                </p>
+              </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleCreateCharacter}
-                  className="bg-blue-700 hover:bg-blue-600 text-white py-3 px-6 rounded-lg flex items-center justify-center gap-2 mt-2 cursor-pointer"
+                  className="bg-zinc-100 hover:bg-white text-zinc-900 py-3 px-6 rounded-lg flex items-center justify-center gap-2 mt-2 cursor-pointer transition-all duration-300 ease-in-out group/createCharacterButton"
                 >
-                  <FiPlus size={20} /> Create Character
+                  <div className="flex items-center justify-center gap-2 group-hover/createCharacterButton:scale-102 transition-all duration-300 ease-in-out font-semibold">
+                    <FiPlus size={20} /> Create Character
+                  </div>
                 </button>
                 <Link
                   to="/explore"
-                  className="border border-zinc-700 hover:bg-zinc-700 text-white py-3 px-6 rounded-lg flex items-center justify-center gap-2 mt-2 cursor-pointer"
+                  className="border border-zinc-600 hover:bg-zinc-700 hover:border-zinc-700 text-white py-3 px-6 rounded-lg flex items-center justify-center gap-2 mt-2 cursor-pointer transition-all duration-300 ease-in-out group/exploreButton"
                 >
-                  Explore
+                  <div className="flex items-center justify-center gap-2 group-hover/exploreButton:scale-102 transition-all duration-300 ease-in-out">
+                    Explore
+                  </div>
                 </Link>
               </div>
             </div>

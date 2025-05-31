@@ -16,7 +16,11 @@ export default function CharacterLayout() {
   const [showSettings, setShowSettings] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
-  const isOwner = user?.id ? user.id === character?.UserId?.toString() : false;
+  // Improved ownership check to handle both string and number types
+  const isOwner =
+    user?.id && character?.UserId
+      ? String(user.id) === String(character.UserId)
+      : false;
 
   // Close sidebar by default on mobile
   useEffect(() => {

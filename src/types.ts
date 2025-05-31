@@ -9,6 +9,7 @@ export interface Character {
   UserId: string;
   isPublic: boolean;
   messageCount: number;
+  image?: string; // Optional image URL or path
   User?: {
     username: string;
     displayName: string;

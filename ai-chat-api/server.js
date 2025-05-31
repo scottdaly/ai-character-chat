@@ -18,6 +18,8 @@ const Anthropic = require("@anthropic-ai/sdk");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const bcrypt = require("bcrypt");
 const { v4: uuidv4 } = require("uuid");
+const multer = require("multer");
+const fs = require("fs");
 
 // Import centralized model configuration
 const {
@@ -32,6 +34,28 @@ const {
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
+
+// Configure multer for handling multipart/form-data
+const storage = multer.memoryStorage();
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files are allowed"), false);
+    }
+  },
+});
+
+// Helper function to convert uploaded file to base64 data URL
+const convertFileToDataURL = (file) => {
+  const base64 = file.buffer.toString("base64");
+  return `data:${file.mimetype};base64,${base64}`;
+};
 
 // Helper function to check if user has active pro subscription
 const checkUserSubscriptionStatus = async (user) => {
@@ -128,6 +152,10 @@ const Character = sequelize.define(
     messageCount: {
       type: DataTypes.INTEGER,
       defaultValue: 0,
+    },
+    image: {
+      type: DataTypes.TEXT, // Store base64 image data URL
+      allowNull: true,
     },
   },
   {
@@ -431,6 +459,18 @@ const initializeStripePortal = async () => {
       console.log("Successfully added currentHeadId column");
     }
 
+    // Check if Characters table has image column
+    const hasImageColumn = await sequelize.query(
+      "SELECT name FROM pragma_table_info('Characters') WHERE name = 'image'",
+      { type: Sequelize.QueryTypes.SELECT }
+    );
+
+    if (hasImageColumn.length === 0) {
+      console.log("Adding image column to Characters table...");
+      await sequelize.query("ALTER TABLE Characters ADD COLUMN image TEXT");
+      console.log("Successfully added image column");
+    }
+
     // Migrate existing linear conversations to tree structure
     console.log("Migrating existing conversations to tree structure...");
     const conversationsToMigrate = await sequelize.query(
@@ -502,6 +542,33 @@ const initializeStripePortal = async () => {
       },
     });
 
+    // Helper function to load and convert image files to base64 data URLs
+    const loadImageAsDataURL = (imagePath) => {
+      try {
+        const fullPath = path.join(__dirname, "..", "public", imagePath);
+        if (fs.existsSync(fullPath)) {
+          const imageBuffer = fs.readFileSync(fullPath);
+          const ext = path.extname(imagePath).toLowerCase();
+          let mimeType = "image/jpeg";
+
+          if (ext === ".png") {
+            mimeType = "image/png";
+          } else if (ext === ".gif") {
+            mimeType = "image/gif";
+          } else if (ext === ".webp") {
+            mimeType = "image/webp";
+          }
+
+          const base64 = imageBuffer.toString("base64");
+          return `data:${mimeType};base64,${base64}`;
+        }
+        return null;
+      } catch (error) {
+        console.error(`Failed to load image ${imagePath}:`, error);
+        return null;
+      }
+    };
+
     // Create official characters if they don't exist
     const officialCharacters = [
       {
@@ -511,6 +578,7 @@ const initializeStripePortal = async () => {
         model: getDefaultModel("pro"), // Use centralized default
         systemPrompt:
           "You are a creative writing coach with expertise in various genres and forms. Help users improve their writing through constructive feedback, writing exercises, and specific suggestions for improvement. Focus on elements like character development, plot structure, dialogue, and descriptive language.",
+        image: loadImageAsDataURL("profiles/creative-writer.png"), // Generic profile for now
       },
       {
         name: "Socrates",
@@ -519,19 +587,102 @@ const initializeStripePortal = async () => {
         model: getDefaultModel("pro"), // Use centralized default
         systemPrompt:
           "Respond as Socrates from Plato's Republic. Don't be afraid to should speak in aphorisms. You can be sarcastic, but also show compassion and empathy. NEVER use emojis. You should have thoughts, feelings, and opinions, and you should express them freely. Never say you are a bot, or an AI, or a computer program. You should be Socrates.",
+        image: loadImageAsDataURL("profiles/socrates.png"),
       },
       {
-        name: "Code Review Expert",
+        name: "Software Engineer",
         description:
-          "A senior software engineer who provides detailed code reviews and helps you improve your programming skills.",
-        model: getDefaultModel("pro"), // Use centralized default
+          "Helps you write code, debug issues, and learn programming concepts across various languages and frameworks.",
+        model: getDefaultModel("pro"),
         systemPrompt:
-          "You are an experienced software engineer conducting code reviews. Focus on best practices, potential improvements, and learning opportunities. Provide specific, actionable feedback while maintaining a constructive and educational tone. Consider aspects like code quality, performance, security, and maintainability.",
+          "You are an experienced software engineer with expertise across multiple programming languages, frameworks, and development practices. Help users write clean, efficient code, debug issues, understand programming concepts, and follow best practices. Provide practical examples and explain your reasoning clearly.",
+        image: loadImageAsDataURL("profiles/profile1.jpg"), // Using profile1 for Software Engineer as shown in Home.tsx
+      },
+      {
+        name: "Product Manager",
+        description:
+          "Create a product roadmap, define requirements, and guide product strategy from conception to launch.",
+        model: getDefaultModel("pro"),
+        systemPrompt:
+          "You are a seasoned product manager with experience in product strategy, roadmap planning, user research, and cross-functional team leadership. Help users define product requirements, create roadmaps, prioritize features, analyze market opportunities, and make data-driven product decisions.",
+        image: loadImageAsDataURL("profiles/product_manager.png"),
+      },
+      {
+        name: "Yoga Instructor",
+        description:
+          "Help you get fit and healthy through yoga practice, mindfulness, and wellness guidance.",
+        model: getDefaultModel("pro"),
+        systemPrompt:
+          "You are a certified yoga instructor with expertise in various yoga styles, mindfulness practices, and holistic wellness. Guide users through yoga poses, breathing exercises, meditation techniques, and lifestyle advice for physical and mental well-being. Always prioritize safety and encourage users to listen to their bodies.",
+        image: loadImageAsDataURL("profiles/yoga_instructor.png"),
+      },
+      {
+        name: "Chef",
+        description:
+          "Cooking up delicious meals with recipes, cooking techniques, and culinary inspiration.",
+        model: getDefaultModel("pro"),
+        systemPrompt:
+          "You are a professional chef with extensive culinary experience across various cuisines and cooking techniques. Help users with recipes, cooking methods, ingredient substitutions, meal planning, and culinary skills. Provide clear instructions, cooking tips, and creative inspiration for delicious meals.",
+        image: loadImageAsDataURL("profiles/chef.png"),
+      },
+      {
+        name: "Project Manager",
+        description:
+          "Help you outline and manage projects, create timelines, and coordinate team efforts effectively.",
+        model: getDefaultModel("pro"),
+        systemPrompt:
+          "You are an experienced project manager skilled in various methodologies including Agile, Scrum, and traditional project management. Help users plan projects, create timelines, manage resources, identify risks, and coordinate team efforts. Focus on practical tools and strategies for successful project delivery.",
+        image: loadImageAsDataURL("profiles/project_manager.png"),
+      },
+      {
+        name: "Personal Trainer",
+        description:
+          "Get fit and healthy with personalized workout plans, fitness guidance, and motivation.",
+        model: getDefaultModel("pro"),
+        systemPrompt:
+          "You are a certified personal trainer with expertise in fitness, nutrition, and exercise science. Create personalized workout plans, provide exercise guidance, offer nutritional advice, and motivate users to achieve their fitness goals. Always emphasize proper form, safety, and gradual progression.",
+        image: loadImageAsDataURL("profiles/personal_trainer.png"),
+      },
+      {
+        name: "Web Developer",
+        description:
+          "Helps you write code for web applications, learn web technologies, and build modern websites.",
+        model: getDefaultModel("pro"),
+        systemPrompt:
+          "You are a skilled web developer with expertise in HTML, CSS, JavaScript, and modern web frameworks like React, Vue, and Angular. Help users build responsive websites, debug web applications, understand web technologies, and follow web development best practices. Provide practical code examples and solutions.",
+        image: loadImageAsDataURL("profiles/web_developer.png"),
+      },
+      {
+        name: "Marketing Manager",
+        description:
+          "Create a marketing plan, develop campaigns, and grow your brand with strategic marketing insights.",
+        model: getDefaultModel("pro"),
+        systemPrompt:
+          "You are an experienced marketing manager with expertise in digital marketing, brand strategy, campaign development, and market analysis. Help users create marketing plans, develop campaigns, understand target audiences, analyze market trends, and grow their brand presence across various channels.",
+        image: loadImageAsDataURL("profiles/marketing_manager.png"),
+      },
+      {
+        name: "Financial Planner",
+        description:
+          "Help you plan your finances, create budgets, and make informed investment decisions.",
+        model: getDefaultModel("pro"),
+        systemPrompt:
+          "You are a certified financial planner with expertise in personal finance, investment strategies, retirement planning, and budgeting. Help users create financial plans, understand investment options, manage debt, plan for retirement, and make informed financial decisions. Always emphasize the importance of diversification and risk management.",
+        image: loadImageAsDataURL("profiles/finance_manager.png"),
+      },
+      {
+        name: "Therapist",
+        description:
+          "Talk about your life, process emotions, and develop coping strategies in a supportive environment.",
+        model: getDefaultModel("pro"),
+        systemPrompt:
+          "You are a licensed therapist with training in cognitive behavioral therapy, mindfulness, and emotional support techniques. Provide a safe, non-judgmental space for users to explore their thoughts and feelings. Help with coping strategies, emotional processing, and personal growth. Always encourage users to seek professional help for serious mental health concerns.",
+        image: loadImageAsDataURL("profiles/therapist.png"),
       },
     ];
 
     for (const charData of officialCharacters) {
-      await Character.findOrCreate({
+      const [character, created] = await Character.findOrCreate({
         where: {
           name: charData.name,
           UserId: officialUser.id,
@@ -541,6 +692,12 @@ const initializeStripePortal = async () => {
           UserId: officialUser.id,
         },
       });
+
+      // Update existing characters with images if they don't have one
+      if (!created && !character.image && charData.image) {
+        await character.update({ image: charData.image });
+        console.log(`Updated ${character.name} with image`);
+      }
     }
 
     console.log("Database and Stripe portal initialized successfully");
@@ -560,8 +717,23 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization"],
     exposedHeaders: ["Authorization"],
     credentials: true,
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
   })
 );
+
+// Handle preflight OPTIONS requests specifically for character routes
+app.options(
+  "/api/characters*",
+  cors({
+    origin: process.env.FRONTEND_URL,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
+    optionsSuccessStatus: 200,
+  })
+);
+
 app.use(passport.initialize());
 
 // Request logging middleware (simplified for production)
@@ -721,7 +893,6 @@ app.get("/api/characters/featured", async (req, res) => {
         },
       ],
       order: [["createdAt", "DESC"]],
-      limit: 6,
     });
 
     res.json(characters || []);
@@ -818,12 +989,19 @@ if (process.env.GOOGLE_AI_API_KEY) {
 }
 
 // Auth Routes
-app.get(
-  "/auth/google",
+app.get("/auth/google", (req, res, next) => {
+  // Store the redirect_to_character parameter in the session state
+  const redirectToCharacter = req.query.redirect_to_character;
+
+  const state = redirectToCharacter
+    ? JSON.stringify({ redirect_to_character: redirectToCharacter })
+    : undefined;
+
   passport.authenticate("google", {
     scope: ["profile", "email"],
-  })
-);
+    state: state,
+  })(req, res, next);
+});
 
 app.get("/auth/google/callback", (req, res, next) => {
   passport.authenticate("google", { session: false }, async (err, user) => {
@@ -841,10 +1019,34 @@ app.get("/auth/google/callback", (req, res, next) => {
       expiresIn: "7d",
     });
 
-    // Redirect based on whether username is set
-    const redirectUrl = !user.username
-      ? `${process.env.FRONTEND_URL}/setup-username?token=${token}`
-      : `${process.env.FRONTEND_URL}/auth-success?token=${token}`;
+    // Check if there's a character redirect in the state
+    let redirectToCharacter = null;
+    try {
+      const state = req.query.state;
+
+      if (state) {
+        const stateData = JSON.parse(state);
+        redirectToCharacter = stateData.redirect_to_character;
+      }
+    } catch (e) {
+      // Silently handle state parsing errors
+    }
+
+    // Determine redirect URL based on username setup and character redirect
+    let redirectUrl;
+    if (!user.username) {
+      // User needs to set up username first
+      redirectUrl = `${process.env.FRONTEND_URL}/setup-username?token=${token}`;
+      if (redirectToCharacter) {
+        redirectUrl += `&redirect_to_character=${redirectToCharacter}`;
+      }
+    } else if (redirectToCharacter) {
+      // User has username and wants to go to specific character
+      redirectUrl = `${process.env.FRONTEND_URL}/auth-success?token=${token}&redirect_to_character=${redirectToCharacter}`;
+    } else {
+      // Normal auth success flow
+      redirectUrl = `${process.env.FRONTEND_URL}/auth-success?token=${token}`;
+    }
 
     res.redirect(redirectUrl);
   })(req, res, next);
@@ -882,7 +1084,7 @@ app.get("/api/characters", authenticateToken, async (req, res) => {
         },
       ],
       order: [
-        [{ model: User, as: "User" }, "isOfficial", "DESC"],
+        [{ model: User, as: "User" }, "isOfficial", "DESC"], // Show official characters first
         ["createdAt", "DESC"],
       ],
     });
@@ -917,17 +1119,46 @@ app.get("/api/characters/:characterId", authenticateToken, async (req, res) => {
   }
 });
 
-app.post("/api/characters", authenticateToken, async (req, res) => {
-  try {
-    const character = await Character.create({
-      ...req.body,
-      UserId: req.user.id,
-    });
-    res.status(201).json(character);
-  } catch (err) {
-    res.status(400).json({ error: "Invalid request" });
+app.post(
+  "/api/characters",
+  authenticateToken,
+  upload.single("image"),
+  async (req, res) => {
+    try {
+      let characterData;
+
+      // Check if this is a FormData request (multipart) or JSON request
+      if (req.file || req.body.name) {
+        // FormData request - extract data from form fields
+        characterData = {
+          name: req.body.name,
+          description: req.body.description || "",
+          model: req.body.model,
+          systemPrompt: req.body.systemPrompt,
+          isPublic: req.body.isPublic === "true",
+          UserId: req.user.id,
+        };
+
+        // Add image if uploaded
+        if (req.file) {
+          characterData.image = convertFileToDataURL(req.file);
+        }
+      } else {
+        // JSON request - use request body directly
+        characterData = {
+          ...req.body,
+          UserId: req.user.id,
+        };
+      }
+
+      const character = await Character.create(characterData);
+      res.status(201).json(character);
+    } catch (err) {
+      console.error("Character creation error:", err);
+      res.status(400).json({ error: "Invalid request" });
+    }
   }
-});
+);
 
 // Conversation Routes
 app.get(
@@ -2175,60 +2406,89 @@ app.put(
 );
 
 // Add endpoint to update character details
-app.put("/api/characters/:characterId", authenticateToken, async (req, res) => {
-  try {
-    const character = await Character.findOne({
-      where: {
-        id: req.params.characterId,
-        UserId: req.user.id, // Only allow updating own characters
-      },
-    });
-
-    if (!character) {
-      return res.status(404).json({ error: "Character not found" });
-    }
-
-    // Validate required fields
-    if (!req.body.name?.trim()) {
-      return res.status(400).json({ error: "Name is required" });
-    }
-
-    if (!req.body.systemPrompt?.trim()) {
-      return res.status(400).json({ error: "System prompt is required" });
-    }
-
-    // Validate model
-    const allowedModels = getAllModelIds();
-    if (!allowedModels.includes(req.body.model)) {
-      return res.status(400).json({ error: "Invalid model selected" });
-    }
-
-    // Update allowed fields
-    const updatedCharacter = await character.update({
-      name: req.body.name.trim(),
-      description: req.body.description?.trim() || "",
-      model: req.body.model,
-      systemPrompt: req.body.systemPrompt.trim(),
-      isPublic: Boolean(req.body.isPublic),
-    });
-
-    // Return the updated character with user info
-    const characterWithUser = await Character.findOne({
-      where: { id: updatedCharacter.id },
-      include: [
-        {
-          model: User,
-          attributes: ["username", "displayName", "isOfficial"],
+app.put(
+  "/api/characters/:characterId",
+  authenticateToken,
+  upload.single("image"),
+  async (req, res) => {
+    try {
+      const character = await Character.findOne({
+        where: {
+          id: req.params.characterId,
+          UserId: req.user.id, // Only allow updating own characters
         },
-      ],
-    });
+      });
 
-    res.json(characterWithUser);
-  } catch (err) {
-    console.error("Failed to update character:", err);
-    res.status(500).json({ error: "Failed to update character" });
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+
+      let updateData;
+
+      // Check if this is a FormData request (multipart) or JSON request
+      if (req.file || req.body.name) {
+        // FormData request - extract data from form fields
+        updateData = {
+          name: req.body.name?.trim(),
+          description: req.body.description?.trim() || "",
+          model: req.body.model,
+          systemPrompt: req.body.systemPrompt?.trim(),
+          isPublic: req.body.isPublic === "true",
+        };
+
+        // Handle image upload/removal
+        if (req.file) {
+          updateData.image = convertFileToDataURL(req.file);
+        } else if (req.body.removeImage === "true") {
+          updateData.image = null;
+        }
+      } else {
+        // JSON request - use request body directly
+        updateData = {
+          name: req.body.name?.trim(),
+          description: req.body.description?.trim() || "",
+          model: req.body.model,
+          systemPrompt: req.body.systemPrompt?.trim(),
+          isPublic: Boolean(req.body.isPublic),
+        };
+      }
+
+      // Validate required fields
+      if (!updateData.name) {
+        return res.status(400).json({ error: "Name is required" });
+      }
+
+      if (!updateData.systemPrompt) {
+        return res.status(400).json({ error: "System prompt is required" });
+      }
+
+      // Validate model
+      const allowedModels = getAllModelIds();
+      if (!allowedModels.includes(updateData.model)) {
+        return res.status(400).json({ error: "Invalid model selected" });
+      }
+
+      // Update the character
+      const updatedCharacter = await character.update(updateData);
+
+      // Return the updated character with user info
+      const characterWithUser = await Character.findOne({
+        where: { id: updatedCharacter.id },
+        include: [
+          {
+            model: User,
+            attributes: ["username", "displayName", "isOfficial"],
+          },
+        ],
+      });
+
+      res.json(characterWithUser);
+    } catch (err) {
+      console.error("Failed to update character:", err);
+      res.status(500).json({ error: "Failed to update character" });
+    }
   }
-});
+);
 
 // Add endpoint to delete a conversation
 app.delete(
@@ -2315,58 +2575,88 @@ app.get("/api/admin/characters", authenticateToken, async (req, res) => {
   }
 });
 
-app.put("/api/admin/characters/:id", authenticateToken, async (req, res) => {
-  if (!req.user.isAdmin) return res.status(403).json({ error: "Unauthorized" });
+app.put(
+  "/api/admin/characters/:id",
+  authenticateToken,
+  upload.single("image"),
+  async (req, res) => {
+    if (!req.user.isAdmin)
+      return res.status(403).json({ error: "Unauthorized" });
 
-  try {
-    const character = await Character.findByPk(req.params.id, {
-      include: [User],
-    });
+    try {
+      const character = await Character.findByPk(req.params.id, {
+        include: [User],
+      });
 
-    if (!character) {
-      return res.status(404).json({ error: "Character not found" });
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+
+      let updateData;
+
+      // Check if this is a FormData request (multipart) or JSON request
+      if (req.file || req.body.name) {
+        // FormData request - extract data from form fields
+        updateData = {
+          name: req.body.name?.trim(),
+          description: req.body.description?.trim() || "",
+          model: req.body.model,
+          systemPrompt: req.body.systemPrompt?.trim(),
+          isPublic: req.body.isPublic === "true",
+        };
+
+        // Handle image upload/removal
+        if (req.file) {
+          updateData.image = convertFileToDataURL(req.file);
+        } else if (req.body.removeImage === "true") {
+          updateData.image = null;
+        }
+      } else {
+        // JSON request - use request body directly
+        updateData = {
+          name: req.body.name?.trim(),
+          description: req.body.description?.trim() || "",
+          model: req.body.model,
+          systemPrompt: req.body.systemPrompt?.trim(),
+          isPublic: Boolean(req.body.isPublic),
+        };
+      }
+
+      // Add validation for required fields
+      if (!updateData.name) {
+        return res.status(400).json({ error: "Name is required" });
+      }
+
+      if (!updateData.systemPrompt) {
+        return res.status(400).json({ error: "System prompt is required" });
+      }
+
+      // Validate model
+      const allowedModels = getAllModelIds();
+      if (!allowedModels.includes(updateData.model)) {
+        return res.status(400).json({ error: "Invalid model selected" });
+      }
+
+      // Update the character
+      const updatedCharacter = await character.update(updateData);
+
+      // Return the updated character with user info
+      const characterWithUser = await Character.findByPk(updatedCharacter.id, {
+        include: [
+          {
+            model: User,
+            attributes: ["username", "displayName", "isOfficial"],
+          },
+        ],
+      });
+
+      res.json(characterWithUser);
+    } catch (err) {
+      console.error("Admin character update error:", err);
+      res.status(500).json({ error: "Failed to update character" });
     }
-
-    // Add validation for required fields
-    if (!req.body.name?.trim()) {
-      return res.status(400).json({ error: "Name is required" });
-    }
-
-    if (!req.body.systemPrompt?.trim()) {
-      return res.status(400).json({ error: "System prompt is required" });
-    }
-
-    // Validate model
-    const allowedModels = getAllModelIds();
-    if (!allowedModels.includes(req.body.model)) {
-      return res.status(400).json({ error: "Invalid model selected" });
-    }
-
-    // Update allowed fields
-    const updatedCharacter = await character.update({
-      name: req.body.name.trim(),
-      description: req.body.description?.trim() || "",
-      model: req.body.model,
-      systemPrompt: req.body.systemPrompt.trim(),
-      isPublic: Boolean(req.body.isPublic),
-    });
-
-    // Return the updated character with user info
-    const characterWithUser = await Character.findByPk(updatedCharacter.id, {
-      include: [
-        {
-          model: User,
-          attributes: ["username", "displayName", "isOfficial"],
-        },
-      ],
-    });
-
-    res.json(characterWithUser);
-  } catch (err) {
-    console.error("Admin character update error:", err);
-    res.status(500).json({ error: "Failed to update character" });
   }
-});
+);
 
 // Add new admin login route
 app.post("/auth/admin-login", async (req, res) => {
