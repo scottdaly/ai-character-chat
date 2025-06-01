@@ -1,0 +1,36 @@
+# Email Configuration - Add these to your .env file
+
+# Choose one email service option:
+
+# Option 1: Gmail (for testing - requires App Password)
+EMAIL_SERVICE=gmail
+GMAIL_USER=your-email@gmail.com
+GMAIL_APP_PASSWORD=your_gmail_app_password
+FROM_EMAIL=noreply@nevermade.co
+
+# Option 2: SendGrid (recommended for production)
+# EMAIL_SERVICE=sendgrid
+# SENDGRID_API_KEY=SG.your_sendgrid_api_key
+# FROM_EMAIL=noreply@nevermade.co
+
+# Option 3: Custom SMTP
+# EMAIL_SERVICE=smtp
+# SMTP_HOST=smtp.your-provider.com
+# SMTP_PORT=587
+# SMTP_SECURE=false
+# SMTP_USER=your_smtp_username
+# SMTP_PASS=your_smtp_password
+# FROM_EMAIL=noreply@nevermade.co
+
+# Instructions:
+# 1. Choose ONE of the above options
+# 2. Uncomment the lines for your chosen service
+# 3. Fill in your actual credentials
+# 4. Add these lines to your .env file
+# 5. Restart your server
+
+# For Gmail setup:
+# 1. Enable 2-factor authentication
+# 2. Go to Google Account Settings > Security > App passwords
+# 3. Generate an app password for "Mail"
+# 4. Use that 16-character password as GMAIL_APP_PASSWORD 
