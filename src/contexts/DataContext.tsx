@@ -29,6 +29,7 @@ interface DataContextType {
 
   // Cache control
   clearCache: () => void;
+  invalidateUserCharacters: () => void;
   isStale: (timestamp: number, maxAge?: number) => boolean;
 }
 
@@ -240,6 +241,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setExploreCharacters(createEmptyCache([]));
   }, []);
 
+  // Invalidate just user characters cache
+  const invalidateUserCharacters = useCallback(() => {
+    console.log("[DataContext] Invalidating user characters cache");
+    setUserCharacters(createEmptyCache([]));
+  }, []);
+
   // Auto-load user characters when user changes
   useEffect(() => {
     if (user) {
@@ -257,6 +264,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     exploreCharacters,
     loadExploreCharacters,
     clearCache,
+    invalidateUserCharacters,
     isStale,
   };
 
