@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { FiPlus } from "react-icons/fi";
 import { useAuth } from "../contexts/AuthContext";
-import { useCharacters } from "../api/characters";
+import { useData } from "../contexts/DataContext";
 import CharacterCard, { CharacterCardSkeleton } from "./CharacterCard";
 import Navbar from "./Navbar";
 import { useUserConversations } from "../api/useUserConversations";
@@ -11,13 +11,25 @@ import { checkCharacterAccess } from "../api/characterAccess";
 export default function Dashboard() {
   const { user, subscriptionTier, isLoadingSubscription } = useAuth();
   const navigate = useNavigate();
-  const { characters, isLoading, error } = useCharacters();
+  const { userCharacters, loadUserCharacters } = useData();
   const {
     conversations: userConversations,
     isLoading: isLoadingConversations,
   } = useUserConversations();
   const [showSkeletons, setShowSkeletons] = useState(false);
-  const [isContentVisible, setIsContentVisible] = useState(false);
+  const [isContentVisible, setIsContentVisible] = useState(
+    userCharacters.data.length > 0
+  );
+
+  // Extract data from cached structure
+  const characters = userCharacters.data;
+  const isLoading = userCharacters.isLoading;
+  const error = userCharacters.error;
+
+  // Load characters when component mounts (will use cache if available)
+  useEffect(() => {
+    loadUserCharacters();
+  }, [loadUserCharacters]);
 
   // Handle loading states with smooth transitions
   useEffect(() => {
@@ -35,22 +47,31 @@ export default function Dashboard() {
 
       return () => clearTimeout(skeletonTimer);
     } else {
-      // Loading finished
-      const finishLoading = async () => {
-        // If skeletons were shown, ensure minimum display time
-        if (showSkeletons) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
-        }
+      // Check if we have cached data - if so, show immediately
+      const hasCachedData = characters.length > 0;
 
+      if (hasCachedData && !showSkeletons) {
+        // Data is cached and we never showed skeletons - show immediately
+        setIsContentVisible(true);
         setShowSkeletons(false);
+      } else {
+        // Loading finished after showing skeletons
+        const finishLoading = async () => {
+          // If skeletons were shown, ensure minimum display time
+          if (showSkeletons) {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+          }
 
-        // Fade in content
-        setTimeout(() => setIsContentVisible(true), 50);
-      };
+          setShowSkeletons(false);
 
-      finishLoading();
+          // Fade in content
+          setTimeout(() => setIsContentVisible(true), 50);
+        };
+
+        finishLoading();
+      }
     }
-  }, [isLoading, isLoadingConversations, showSkeletons]);
+  }, [isLoading, isLoadingConversations, showSkeletons, characters.length]);
 
   const handleCreateCharacter = () => {
     // Check character limit for free users

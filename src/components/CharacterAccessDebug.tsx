@@ -1,6 +1,6 @@
 import { useAuth } from "../contexts/AuthContext";
 import { useUserConversations } from "../api/useUserConversations";
-import { useCharacters } from "../api/characters";
+import { useData } from "../contexts/DataContext";
 import { checkCharacterAccess } from "../api/characterAccess";
 
 export default function CharacterAccessDebug() {
@@ -9,7 +9,11 @@ export default function CharacterAccessDebug() {
     conversations: userConversations,
     isLoading: isLoadingConversations,
   } = useUserConversations();
-  const { characters, isLoading: isLoadingCharacters } = useCharacters();
+  const { userCharacters } = useData();
+
+  // Extract data from cached structure
+  const characters = userCharacters.data;
+  const isLoadingCharacters = userCharacters.isLoading;
 
   if (isLoadingConversations || isLoadingCharacters) {
     return <div>Loading...</div>;

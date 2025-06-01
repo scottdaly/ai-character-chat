@@ -1047,7 +1047,7 @@ export default function ConversationChat() {
         <div className="flex flex-col items-center justify-center w-full">
           <div className="flex gap-2 max-w-4xl w-full">
             <div
-              className="flex flex-1 flex-col px-3 py-2 gap-2 w-full bg-zinc-700 border border-zinc-600 rounded-lg focus-within:border-zinc-400/50 message-scrollbar cursor-text"
+              className="flex flex-1 flex-col px-3 py-2 gap-2 w-full bg-zinc-700/80 border border-zinc-600/50 rounded-lg focus-within:border-zinc-400/40 message-scrollbar cursor-text"
               onClick={(e) => {
                 // Check if the clicked element is a button or inside a button
                 const target = e.target as HTMLElement;
@@ -1065,7 +1065,7 @@ export default function ConversationChat() {
                   {selectedImages.map((image, index) => (
                     <div
                       key={index}
-                      className="relative group border border-zinc-700 rounded-lg"
+                      className="relative border border-zinc-700 rounded-lg"
                     >
                       <img
                         src={image.data}
@@ -1078,7 +1078,7 @@ export default function ConversationChat() {
                           removeImage(index);
                         }}
                         title="Remove image"
-                        className="absolute -top-2 -right-2 hidden group-hover:flex bg-zinc-700 border border-zinc-600 hover:bg-zinc-600 text-white rounded-full w-6 h-6 items-center justify-center text-xs cursor-pointer transition-colors duration-300 ease-in-out"
+                        className="absolute -top-2 -right-2 flex bg-zinc-700 border border-zinc-600 hover:bg-zinc-600 text-white rounded-full w-6 h-6 items-center justify-center text-xs cursor-pointer transition-colors duration-300 ease-in-out"
                       >
                         <FiX size={12} />
                       </button>
@@ -1149,7 +1149,7 @@ export default function ConversationChat() {
                     e.stopPropagation();
                     handleSend();
                   }}
-                  className="border border-zinc-500 hover:border-zinc-800 hover:bg-zinc-800 text-zinc-100 px-3 py-3 rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:hover:bg-zinc-700 disabled:hover:border-zinc-500 disabled:cursor-text cursor-pointer transition-colors duration-300 ease-in-out group/send disabled:group/send:cursor-text"
+                  className="bg-zinc-900/80 hover:bg-zinc-900 text-zinc-100 px-3 py-3 rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:hover:bg-zinc-700 disabled:hover:border-zinc-500 disabled:cursor-text cursor-pointer transition-colors duration-300 ease-in-out group/send disabled:group/send:cursor-text"
                   title="Send message"
                   disabled={
                     messagesLoading ||

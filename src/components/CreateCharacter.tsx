@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { FiArrowLeft, FiUpload, FiX } from "react-icons/fi";
 import { useAuth } from "../contexts/AuthContext";
-import { useCharacters } from "../api/characters";
+import { useData } from "../contexts/DataContext";
 import { Character } from "../types";
 import { getModelGroups, getDefaultModel } from "../config/models";
 import Navbar from "./Navbar";
@@ -10,7 +10,7 @@ import Navbar from "./Navbar";
 export default function CreateCharacter() {
   const { user, subscriptionTier, isLoadingSubscription } = useAuth();
   const navigate = useNavigate();
-  const { createCharacter } = useCharacters();
+  const { createUserCharacter } = useData();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -145,9 +145,9 @@ export default function CreateCharacter() {
         formData.append("image", imageFile);
       }
 
-      // Note: This assumes the createCharacter function can handle FormData
+      // Note: This assumes the createUserCharacter function can handle FormData
       // You may need to update the API call to handle file uploads
-      await createCharacter(formData);
+      await createUserCharacter(formData);
       navigate("/dashboard");
     } catch (error) {
       console.error("Failed to create character:", error);

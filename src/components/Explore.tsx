@@ -4,60 +4,69 @@ import CharacterCard, { CharacterCardSkeleton } from "./CharacterCard";
 import ControlledCarousel from "./ControlledCarousel";
 import { Character } from "../types";
 import { useAuth } from "../contexts/AuthContext";
+import { useData } from "../contexts/DataContext";
 import Navbar from "./Navbar";
-import { useCharacters } from "../api/characters";
 
 export default function Explore() {
-  const { user, login, apiFetch, subscriptionTier, isLoadingSubscription } =
-    useAuth();
-  const [characters, setCharacters] = useState<Character[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { user, login, subscriptionTier, isLoadingSubscription } = useAuth();
+  const { exploreCharacters, loadExploreCharacters, userCharacters } =
+    useData();
   const [showSkeletons, setShowSkeletons] = useState(false);
-  const [isContentVisible, setIsContentVisible] = useState(false);
+  const [isContentVisible, setIsContentVisible] = useState(
+    exploreCharacters.data.length > 0
+  );
   const navigate = useNavigate();
 
-  const { characters: userCharacters, isLoading: isLoadingUserCharacters } =
-    useCharacters();
+  // Extract data from cached structure
+  const characters = exploreCharacters.data;
+  const isLoading = exploreCharacters.isLoading;
+  const userCharactersList = userCharacters.data;
+  const isLoadingUserCharacters = userCharacters.isLoading;
 
+  // Load explore characters when component mounts (will use cache if available)
   useEffect(() => {
-    const loadExploreCharacters = async () => {
-      try {
-        setIsLoading(true);
-        setIsContentVisible(false);
-
-        // Show skeletons after 200ms if still loading
-        const skeletonTimer = setTimeout(() => {
-          if (isLoading) {
-            setShowSkeletons(true);
-          }
-        }, 200);
-
-        const data = await apiFetch("/api/characters/explore");
-        setCharacters(Array.isArray(data) ? data : []);
-
-        clearTimeout(skeletonTimer);
-
-        // If skeletons were shown, ensure minimum display time
-        if (showSkeletons) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
-        }
-
-        setIsLoading(false);
-        setShowSkeletons(false);
-
-        // Fade in content
-        setTimeout(() => setIsContentVisible(true), 50);
-      } catch (error) {
-        console.error("Failed to load characters:", error);
-        setCharacters([]);
-        setIsLoading(false);
-        setShowSkeletons(false);
-        setTimeout(() => setIsContentVisible(true), 50);
-      }
-    };
-
     loadExploreCharacters();
-  }, [apiFetch]);
+  }, [loadExploreCharacters]);
+
+  // Handle loading states with smooth transitions
+  useEffect(() => {
+    if (isLoading) {
+      setIsContentVisible(false);
+
+      // Show skeletons after 200ms if still loading
+      const skeletonTimer = setTimeout(() => {
+        if (isLoading) {
+          setShowSkeletons(true);
+        }
+      }, 200);
+
+      return () => clearTimeout(skeletonTimer);
+    } else {
+      // Check if we have cached data - if so, show immediately
+      const hasCachedData = characters.length > 0;
+
+      if (hasCachedData && !showSkeletons) {
+        // Data is cached and we never showed skeletons - show immediately
+        setIsContentVisible(true);
+        setShowSkeletons(false);
+      } else {
+        // Loading finished after showing skeletons
+        const finishLoading = async () => {
+          // If skeletons were shown, ensure minimum display time
+          if (showSkeletons) {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+          }
+
+          setShowSkeletons(false);
+
+          // Fade in content
+          setTimeout(() => setIsContentVisible(true), 50);
+        };
+
+        finishLoading();
+      }
+    }
+  }, [isLoading, showSkeletons, characters.length]);
 
   // Separate official and public characters
   const officialCharacters = characters.filter((char) => char.User?.isOfficial);
@@ -73,8 +82,8 @@ export default function Explore() {
       !isLoadingSubscription &&
       !isLoadingUserCharacters &&
       subscriptionTier === "free" &&
-      userCharacters.length >= 3 &&
-      !userCharacters.some((uc) => uc.id === character.id)
+      userCharactersList.length >= 3 &&
+      !userCharactersList.some((uc) => uc.id === character.id)
     ) {
       navigate("/plans");
     } else {
