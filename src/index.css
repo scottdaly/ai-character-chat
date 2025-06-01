@@ -4,6 +4,13 @@ body {
   background-color: #18181b;
 }
 
+/* Apply scrollbar-gutter only to containers that actually scroll */
+.scrollable-container {
+  scrollbar-gutter: stable;
+}
+
+/* Remove the old fallback since we're targeting specific containers */
+
 /* Browser autofill styling fix */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
@@ -80,16 +87,16 @@ input:autofill {
 }
 
 #messages-container::-webkit-scrollbar-thumb:hover {
-  background: #6b7280; /* gray-500 */
+  background: #717379; /* gray-500 */
 }
 
 /* Firefox scrollbar styles */
 #messages-container {
-  scrollbar-color: #4d515c #18181b;
+  scrollbar-color: #6e7077 #18181b;
 }
 
 .message-scrollbar {
-  scrollbar-color: #4d515c transparent;
+  scrollbar-color: #717379 transparent;
 }
 
 .message-scrollbar::-webkit-scrollbar {

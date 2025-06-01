@@ -114,7 +114,7 @@ export default function Explore() {
         isLoadingSubscription={isLoadingSubscription}
       />
 
-      <main className="container mx-auto max-w-6xl px-4 py-8 overflow-y-auto">
+      <main className="container mx-auto max-w-6xl px-4 py-8 overflow-y-auto scrollable-container">
         <h1 className="text-3xl font-bold mb-8">Explore Characters</h1>
 
         <div className="space-y-12">

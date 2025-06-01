@@ -403,7 +403,7 @@ export default function AccountSettings() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-y-auto dark-scrollbar">
+    <div className="flex-1 flex flex-col h-full overflow-y-auto dark-scrollbar scrollable-container">
       {/* Header */}
       <Navbar
         subscriptionTier={subscriptionTier}

@@ -130,7 +130,7 @@ export default function SubscriptionPlans() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-y-auto dark-scrollbar">
+    <div className="flex-1 flex flex-col h-full overflow-y-auto dark-scrollbar scrollable-container">
       <Navbar
         subscriptionTier={subscriptionTier}
         isLoadingSubscription={isLoadingSubscription}
@@ -207,7 +207,7 @@ export default function SubscriptionPlans() {
                       loading
                         ? "opacity-50 cursor-not-allowed"
                         : plan.id === "free"
-                        ? "bg-zinc-700"
+                        ? "bg-zinc-700 hover:bg-red-600/50 duration-300 ease-in-out"
                         : "bg-blue-600 hover:bg-blue-800 hover:scale-102 transition-all duration-500 ease-in-out"
                     }`}
                   >
