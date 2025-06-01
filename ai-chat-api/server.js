@@ -30,9 +30,6 @@ const {
   supportsImages,
 } = require("./models");
 
-// Import email service
-const { sendWelcomeEmail, sendReceiptEmail } = require("./email-service");
-
 // Initialize Stripe with the secret key from environment variables
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
@@ -2860,67 +2857,16 @@ app.post(
     // Handle the event
     switch (event.type) {
       case "customer.subscription.created":
-        const newSubscription = event.data.object;
-        console.log(`🎉 New subscription created: ${newSubscription.id}`);
-
-        const newUser = await User.findOne({
-          where: { stripeCustomerId: newSubscription.customer },
-        });
-
-        if (newUser) {
-          const subscriptionTier =
-            newSubscription.items.data[0].price.nickname || "pro";
-          const subscriptionAmount =
-            newSubscription.items.data[0].price.unit_amount / 100;
-          const subscriptionEndDate = new Date(
-            newSubscription.current_period_end * 1000
-          );
-
-          // Update user subscription status
-          await newUser.update({
-            subscriptionStatus: newSubscription.status,
-            subscriptionTier: subscriptionTier,
-            subscriptionEndsAt: subscriptionEndDate,
-          });
-
-          // Send welcome email
-          try {
-            const customerName =
-              newUser.displayName ||
-              newUser.username ||
-              newUser.email.split("@")[0];
-            const subscriptionDetails = {
-              tier: subscriptionTier,
-              amount: subscriptionAmount,
-              endDate: subscriptionEndDate.toLocaleDateString(),
-            };
-
-            const emailResult = await sendWelcomeEmail(
-              newUser.email,
-              customerName,
-              subscriptionDetails
-            );
-
-            if (emailResult.success) {
-              console.log(`✅ Welcome email sent to ${newUser.email}`);
-            } else {
-              console.log(
-                `⚠️  Welcome email failed: ${
-                  emailResult.reason || emailResult.error
-                }`
-              );
-            }
-          } catch (emailError) {
-            console.error("❌ Failed to send welcome email:", emailError);
-          }
-        }
-        break;
-
       case "customer.subscription.updated":
         const subscription = event.data.object;
+        console.log(
+          `🔄 Subscription ${event.type.split(".").pop()}: ${subscription.id}`
+        );
+
         const user = await User.findOne({
           where: { stripeCustomerId: subscription.customer },
         });
+
         if (user) {
           await user.update({
             subscriptionStatus: subscription.status,
@@ -2930,70 +2876,36 @@ app.post(
               subscription.current_period_end * 1000
             ),
           });
+          console.log(`✅ Updated subscription for user: ${user.email}`);
+        } else {
+          console.log(
+            `⚠️  No user found for Stripe customer: ${subscription.customer}`
+          );
         }
         break;
 
       case "customer.subscription.deleted":
         const canceledSubscription = event.data.object;
+        console.log(`❌ Subscription canceled: ${canceledSubscription.id}`);
+
         const canceledUser = await User.findOne({
           where: { stripeCustomerId: canceledSubscription.customer },
         });
+
         if (canceledUser) {
           await canceledUser.update({
             subscriptionStatus: "free",
             subscriptionTier: "free",
             subscriptionEndsAt: null,
           });
+          console.log(
+            `✅ Subscription canceled for user: ${canceledUser.email}`
+          );
         }
         break;
 
-      case "invoice.payment_succeeded":
-        // Handle successful payments for sending receipt emails
-        const invoice = event.data.object;
-        console.log(`💰 Payment succeeded for invoice: ${invoice.id}`);
-
-        // Only send receipt emails for subscription invoices (not one-time payments)
-        if (
-          invoice.subscription &&
-          invoice.billing_reason === "subscription_cycle"
-        ) {
-          const invoiceUser = await User.findOne({
-            where: { stripeCustomerId: invoice.customer },
-          });
-
-          if (invoiceUser) {
-            try {
-              const customerName =
-                invoiceUser.displayName ||
-                invoiceUser.username ||
-                invoiceUser.email.split("@")[0];
-              const receiptDetails = {
-                amount: (invoice.amount_paid / 100).toFixed(2),
-                subscriptionId: invoice.subscription,
-                invoiceUrl: invoice.hosted_invoice_url,
-              };
-
-              const receiptResult = await sendReceiptEmail(
-                invoiceUser.email,
-                customerName,
-                receiptDetails
-              );
-
-              if (receiptResult.success) {
-                console.log(`✅ Receipt email sent to ${invoiceUser.email}`);
-              } else {
-                console.log(
-                  `⚠️  Receipt email failed: ${
-                    receiptResult.reason || receiptResult.error
-                  }`
-                );
-              }
-            } catch (emailError) {
-              console.error("❌ Failed to send receipt email:", emailError);
-            }
-          }
-        }
-        break;
+      default:
+        console.log(`ℹ️  Unhandled event type: ${event.type}`);
     }
 
     res.json({ received: true });
@@ -3018,7 +2930,7 @@ app.post("/api/create-subscription", authenticateToken, async (req, res) => {
       await req.user.update({ stripeCustomerId: customer.id });
     }
 
-    // Create Checkout Session with receipt emails enabled
+    // Create Checkout Session optimized for Stripe's automatic emails
     const session = await stripe.checkout.sessions.create({
       customer: req.user.stripeCustomerId,
       line_items: [
@@ -3033,17 +2945,8 @@ app.post("/api/create-subscription", authenticateToken, async (req, res) => {
       allow_promotion_codes: true,
       billing_address_collection: "auto",
       payment_method_types: ["card"],
-      // Enable automatic receipt emails
-      customer_email: req.user.email, // Ensure email is set for receipts
-      payment_intent_data: {
-        receipt_email: req.user.email, // Send receipt to customer
-      },
-      // Add metadata for tracking
-      metadata: {
-        userId: req.user.id.toString(),
-        userEmail: req.user.email,
-        userName: req.user.displayName || req.user.username || "User",
-      },
+      // Ensure Stripe sends automatic receipt emails
+      customer_email: req.user.email,
     });
 
     res.json({ url: session.url });
