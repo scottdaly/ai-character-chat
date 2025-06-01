@@ -1,4 +1,5 @@
 // src/App.tsx
+import React, { Suspense } from "react";
 import {
   createBrowserRouter,
   RouterProvider,
@@ -6,21 +7,43 @@ import {
   Navigate,
 } from "react-router-dom";
 import Home from "./components/Home";
-import Dashboard from "./components/Dashboard";
-import Explore from "./components/Explore";
+import { useAuth } from "./contexts/AuthContext";
+import ErrorBoundary from "./components/ErrorBoundary";
+
+// Lazy load heavy components
+const Dashboard = React.lazy(() => import("./components/Dashboard"));
+const Explore = React.lazy(() => import("./components/Explore"));
+const ConversationChat = React.lazy(
+  () => import("./components/ConversationChat")
+);
+const CreateCharacter = React.lazy(
+  () => import("./components/CreateCharacter")
+);
+const AccountSettings = React.lazy(
+  () => import("./components/AccountSettings")
+);
+const SubscriptionPlans = React.lazy(
+  () => import("./components/SubscriptionPlans")
+);
+const Admin = React.lazy(() => import("./components/Admin"));
+
+// Keep small/essential components as regular imports
 import CharacterLayout from "./components/CharacterLayout";
-import ConversationChat from "./components/ConversationChat";
 import AuthSuccess from "./components/AuthSuccess";
 import SetupUsername from "./components/SetupUsername";
 import UsernamePromptModal from "./components/UsernamePromptModal";
-import CreateCharacter from "./components/CreateCharacter";
-import { useAuth } from "./contexts/AuthContext";
 import Test from "./components/Test";
 import MarkdownTest from "./components/MarkdownTest";
-import Admin from "./components/Admin";
 import AdminLogin from "./components/AdminLogin";
-import SubscriptionPlans from "./components/SubscriptionPlans";
-import AccountSettings from "./components/AccountSettings";
+
+// Loading fallback component
+function LoadingFallback() {
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-zinc-800">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+    </div>
+  );
+}
 
 // Component to handle character redirect
 function CharacterRedirect() {
@@ -36,15 +59,36 @@ const router = createBrowserRouter([
       { index: true, element: <Home /> },
       { path: "auth-success", element: <AuthSuccess /> },
       { path: "setup-username", element: <SetupUsername /> },
-      { path: "explore", element: <Explore /> },
+      {
+        path: "explore",
+        element: (
+          <Suspense fallback={<LoadingFallback />}>
+            <Explore />
+          </Suspense>
+        ),
+      },
       { path: "test", element: <Test /> },
       { path: "markdown-test", element: <MarkdownTest /> },
       {
         path: "dashboard",
         element: <ProtectedRoute />,
         children: [
-          { index: true, element: <Dashboard /> },
-          { path: "create-character", element: <CreateCharacter /> },
+          {
+            index: true,
+            element: (
+              <Suspense fallback={<LoadingFallback />}>
+                <Dashboard />
+              </Suspense>
+            ),
+          },
+          {
+            path: "create-character",
+            element: (
+              <Suspense fallback={<LoadingFallback />}>
+                <CreateCharacter />
+              </Suspense>
+            ),
+          },
           {
             path: "characters/:characterId",
             element: <CharacterLayout />,
@@ -53,7 +97,11 @@ const router = createBrowserRouter([
               { path: "conversations", element: <CharacterRedirect /> },
               {
                 path: "conversations/:conversationId",
-                element: <ConversationChat />,
+                element: (
+                  <Suspense fallback={<LoadingFallback />}>
+                    <ConversationChat />
+                  </Suspense>
+                ),
               },
             ],
           },
@@ -62,17 +110,44 @@ const router = createBrowserRouter([
       {
         path: "settings",
         element: <ProtectedRoute />,
-        children: [{ index: true, element: <AccountSettings /> }],
+        children: [
+          {
+            index: true,
+            element: (
+              <Suspense fallback={<LoadingFallback />}>
+                <AccountSettings />
+              </Suspense>
+            ),
+          },
+        ],
       },
       {
         path: "plans",
         element: <ProtectedRoute />,
-        children: [{ index: true, element: <SubscriptionPlans /> }],
+        children: [
+          {
+            index: true,
+            element: (
+              <Suspense fallback={<LoadingFallback />}>
+                <SubscriptionPlans />
+              </Suspense>
+            ),
+          },
+        ],
       },
       {
         path: "admin",
         element: <ProtectedAdminRoute />,
-        children: [{ index: true, element: <Admin /> }],
+        children: [
+          {
+            index: true,
+            element: (
+              <Suspense fallback={<LoadingFallback />}>
+                <Admin />
+              </Suspense>
+            ),
+          },
+        ],
       },
       {
         path: "admin-login",
@@ -118,5 +193,9 @@ function ProtectedAdminRoute() {
 }
 
 export default function App() {
-  return <RouterProvider router={router} />;
+  return (
+    <ErrorBoundary>
+      <RouterProvider router={router} />
+    </ErrorBoundary>
+  );
 }

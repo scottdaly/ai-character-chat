@@ -71,7 +71,15 @@ export default function Dashboard() {
         finishLoading();
       }
     }
-  }, [isLoading, isLoadingConversations, showSkeletons, characters.length]);
+  }, [isLoading, isLoadingConversations, showSkeletons]);
+
+  // Separate effect to handle visibility when data changes
+  useEffect(() => {
+    // If we have data and we're not loading, show content immediately
+    if (characters.length > 0 && !isLoading && !isLoadingConversations) {
+      setIsContentVisible(true);
+    }
+  }, [characters.length, isLoading, isLoadingConversations]);
 
   const handleCreateCharacter = () => {
     // Check character limit for free users

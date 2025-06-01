@@ -66,7 +66,15 @@ export default function Explore() {
         finishLoading();
       }
     }
-  }, [isLoading, showSkeletons, characters.length]);
+  }, [isLoading, showSkeletons]);
+
+  // Separate effect to handle visibility when data changes
+  useEffect(() => {
+    // If we have data and we're not loading, show content immediately
+    if (characters.length > 0 && !isLoading) {
+      setIsContentVisible(true);
+    }
+  }, [characters.length, isLoading]);
 
   // Separate official and public characters
   const officialCharacters = characters.filter((char) => char.User?.isOfficial);

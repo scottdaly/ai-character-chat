@@ -72,16 +72,26 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   // Load user characters with caching
   const loadUserCharacters = useCallback(async () => {
-    // Check if we have fresh data
-    if (
-      userCharacters.data.length > 0 &&
-      !isStale(userCharacters.timestamp, CACHE_EXPIRY.USER_CHARACTERS)
-    ) {
+    // Use callback form to get fresh state
+    let shouldLoad = false;
+    setUserCharacters((currentState) => {
+      // Check if we have fresh data
+      if (
+        currentState.data.length > 0 &&
+        !isStale(currentState.timestamp, CACHE_EXPIRY.USER_CHARACTERS)
+      ) {
+        shouldLoad = false;
+        return currentState; // No change needed
+      }
+
+      shouldLoad = true;
+      // Set loading state
+      return { ...currentState, isLoading: true, error: null };
+    });
+
+    if (!shouldLoad) {
       return;
     }
-
-    // Set loading state
-    setUserCharacters((prev) => ({ ...prev, isLoading: true, error: null }));
 
     try {
       const data = await apiFetch<Character[]>("/api/characters");
@@ -104,20 +114,30 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         error,
       }));
     }
-  }, [apiFetch, userCharacters.data.length, userCharacters.timestamp, isStale]);
+  }, [apiFetch, isStale]);
 
   // Load explore characters with caching
   const loadExploreCharacters = useCallback(async () => {
-    // Check if we have fresh data
-    if (
-      exploreCharacters.data.length > 0 &&
-      !isStale(exploreCharacters.timestamp, CACHE_EXPIRY.EXPLORE_CHARACTERS)
-    ) {
+    // Use callback form to get fresh state
+    let shouldLoad = false;
+    setExploreCharacters((currentState) => {
+      // Check if we have fresh data
+      if (
+        currentState.data.length > 0 &&
+        !isStale(currentState.timestamp, CACHE_EXPIRY.EXPLORE_CHARACTERS)
+      ) {
+        shouldLoad = false;
+        return currentState; // No change needed
+      }
+
+      shouldLoad = true;
+      // Set loading state
+      return { ...currentState, isLoading: true, error: null };
+    });
+
+    if (!shouldLoad) {
       return;
     }
-
-    // Set loading state
-    setExploreCharacters((prev) => ({ ...prev, isLoading: true, error: null }));
 
     try {
       const data = await apiFetch("/api/characters/explore");
@@ -142,12 +162,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         error,
       }));
     }
-  }, [
-    apiFetch,
-    exploreCharacters.data.length,
-    exploreCharacters.timestamp,
-    isStale,
-  ]);
+  }, [apiFetch, isStale]);
 
   // Create user character
   const createUserCharacter = useCallback(

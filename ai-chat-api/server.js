@@ -1041,42 +1041,75 @@ passport.use(
           `[PASSPORT_DEBUG] Authenticating user with Google ID: ${profile.id}`
         );
 
-        const [user, created] = await User.findOrCreate({
-          where: { googleId: profile.id },
-          defaults: {
-            displayName: profile.displayName,
-            email: profile.emails[0].value,
-          },
+        // First, try to find user by Google ID
+        let user = await User.findOne({ where: { googleId: profile.id } });
+
+        if (user) {
+          console.log(`[PASSPORT_DEBUG] User found by Google ID:`, {
+            userId: user.id,
+            googleId: user.googleId,
+            email: user.email,
+          });
+          return done(null, user);
+        }
+
+        // If not found by Google ID, check if user exists by email (recovered user case)
+        const existingUserByEmail = await User.findOne({
+          where: { email: profile.emails[0].value },
         });
 
-        console.log(`[PASSPORT_DEBUG] User ${created ? "created" : "found"}:`, {
+        if (existingUserByEmail) {
+          console.log(
+            `[PASSPORT_DEBUG] Found existing user by email, updating Google ID:`,
+            {
+              userId: existingUserByEmail.id,
+              oldGoogleId: existingUserByEmail.googleId,
+              newGoogleId: profile.id,
+              email: existingUserByEmail.email,
+            }
+          );
+
+          // Update the existing user with the real Google ID
+          await existingUserByEmail.update({
+            googleId: profile.id,
+            displayName: profile.displayName, // Also update display name if provided
+          });
+
+          console.log(`[PASSPORT_DEBUG] Successfully updated user Google ID`);
+          return done(null, existingUserByEmail);
+        }
+
+        // If no existing user found, create a new one
+        console.log(
+          `[PASSPORT_DEBUG] Creating new user for Google ID: ${profile.id}`
+        );
+
+        user = await User.create({
+          googleId: profile.id,
+          displayName: profile.displayName,
+          email: profile.emails[0].value,
+        });
+
+        console.log(`[PASSPORT_DEBUG] New user created:`, {
           userId: user.id,
           googleId: user.googleId,
           email: user.email,
-          created: created,
         });
 
-        // If user was just created, add a small delay to ensure database consistency
-        if (created) {
-          console.log(
-            `[PASSPORT_DEBUG] New user created, verifying database consistency...`
+        // Add a small delay to ensure database consistency
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        const verifyUser = await User.findByPk(user.id);
+        if (!verifyUser) {
+          console.error(
+            `[PASSPORT_DEBUG] CRITICAL: Newly created user ${user.id} not found after creation!`
           );
-
-          // Add a small delay and verify the user exists
-          await new Promise((resolve) => setTimeout(resolve, 100));
-
-          const verifyUser = await User.findByPk(user.id);
-          if (!verifyUser) {
-            console.error(
-              `[PASSPORT_DEBUG] CRITICAL: Newly created user ${user.id} not found after creation!`
-            );
-            return done(new Error("Database consistency error"));
-          }
-
-          console.log(
-            `[PASSPORT_DEBUG] New user verified in database successfully`
-          );
+          return done(new Error("Database consistency error"));
         }
+
+        console.log(
+          `[PASSPORT_DEBUG] New user verified in database successfully`
+        );
 
         done(null, user);
       } catch (err) {
