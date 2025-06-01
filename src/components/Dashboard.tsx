@@ -26,6 +26,25 @@ export default function Dashboard() {
   const isLoading = userCharacters.isLoading;
   const error = userCharacters.error;
 
+  // Debug logging
+  useEffect(() => {
+    console.log("[Dashboard] State update:", {
+      charactersCount: characters.length,
+      isLoading,
+      error: error?.message,
+      showSkeletons,
+      isContentVisible,
+      timestamp: userCharacters.timestamp,
+    });
+  }, [
+    characters.length,
+    isLoading,
+    error,
+    showSkeletons,
+    isContentVisible,
+    userCharacters.timestamp,
+  ]);
+
   // Load characters when component mounts (will use cache if available)
   useEffect(() => {
     loadUserCharacters();
@@ -47,7 +66,7 @@ export default function Dashboard() {
 
       return () => clearTimeout(skeletonTimer);
     } else {
-      // Check if we have cached data - if so, show immediately
+      // Loading finished - handle based on whether we have data
       const hasCachedData = characters.length > 0;
 
       if (hasCachedData && !showSkeletons) {
@@ -55,7 +74,7 @@ export default function Dashboard() {
         setIsContentVisible(true);
         setShowSkeletons(false);
       } else {
-        // Loading finished after showing skeletons
+        // Loading finished - either with data or empty state
         const finishLoading = async () => {
           // If skeletons were shown, ensure minimum display time
           if (showSkeletons) {
@@ -64,7 +83,7 @@ export default function Dashboard() {
 
           setShowSkeletons(false);
 
-          // Fade in content
+          // Always show content when loading is done (even if empty)
           setTimeout(() => setIsContentVisible(true), 50);
         };
 
@@ -75,8 +94,8 @@ export default function Dashboard() {
 
   // Separate effect to handle visibility when data changes
   useEffect(() => {
-    // If we have data and we're not loading, show content immediately
-    if (characters.length > 0 && !isLoading && !isLoadingConversations) {
+    // If we're not loading, show content immediately (whether we have data or not)
+    if (!isLoading && !isLoadingConversations) {
       setIsContentVisible(true);
     }
   }, [characters.length, isLoading, isLoadingConversations]);

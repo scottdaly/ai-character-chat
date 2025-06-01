@@ -75,16 +75,27 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // Use callback form to get fresh state
     let shouldLoad = false;
     setUserCharacters((currentState) => {
-      // Check if we have fresh data
-      if (
-        currentState.data.length > 0 &&
-        !isStale(currentState.timestamp, CACHE_EXPIRY.USER_CHARACTERS)
-      ) {
+      // Check if we have fresh data (either with characters OR a recent successful empty response)
+      const hasRecentData =
+        currentState.timestamp > 0 &&
+        !isStale(currentState.timestamp, CACHE_EXPIRY.USER_CHARACTERS);
+
+      console.log("[DataContext] loadUserCharacters check:", {
+        hasRecentData,
+        timestamp: currentState.timestamp,
+        dataLength: currentState.data.length,
+        isLoading: currentState.isLoading,
+        error: currentState.error,
+      });
+
+      if (hasRecentData) {
         shouldLoad = false;
+        console.log("[DataContext] Using cached data, skipping load");
         return currentState; // No change needed
       }
 
       shouldLoad = true;
+      console.log("[DataContext] Setting loading state, will fetch data");
       // Set loading state
       return { ...currentState, isLoading: true, error: null };
     });
@@ -94,8 +105,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
+      console.log("[DataContext] Fetching user characters...");
       const data = await apiFetch<Character[]>("/api/characters");
       const characters = Array.isArray(data) ? data : [];
+
+      console.log("[DataContext] Received user characters:", {
+        count: characters.length,
+        characters: characters.map((c) => ({ id: c.id, name: c.name })),
+      });
 
       setUserCharacters({
         data: characters,
@@ -121,11 +138,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // Use callback form to get fresh state
     let shouldLoad = false;
     setExploreCharacters((currentState) => {
-      // Check if we have fresh data
-      if (
-        currentState.data.length > 0 &&
-        !isStale(currentState.timestamp, CACHE_EXPIRY.EXPLORE_CHARACTERS)
-      ) {
+      // Check if we have fresh data (either with characters OR a recent successful empty response)
+      const hasRecentData =
+        currentState.timestamp > 0 &&
+        !isStale(currentState.timestamp, CACHE_EXPIRY.EXPLORE_CHARACTERS);
+
+      if (hasRecentData) {
         shouldLoad = false;
         return currentState; // No change needed
       }
