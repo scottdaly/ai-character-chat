@@ -8,6 +8,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { SidebarProvider, useSidebar } from "../contexts/SidebarContext";
 import CharacterSettings from "./CharacterSettings";
 import ConfirmationModal from "./ConfirmationModal";
+import Toast from "./Toast";
 import { useConversations } from "../api/conversations";
 import { getModelAlias } from "./CharacterCard";
 
@@ -25,6 +26,19 @@ function CharacterLayoutContent() {
   const [conversationToDelete, setConversationToDelete] = useState<
     string | null
   >(null);
+
+  // Toast state for notifications
+  const [toast, setToast] = useState<{
+    message: string;
+    type: "success" | "error";
+    location?:
+      | "top-right"
+      | "top-left"
+      | "top-center"
+      | "bottom-right"
+      | "bottom-left"
+      | "bottom-center";
+  } | null>(null);
 
   // Improved ownership check to handle both string and number types
   const isOwner =
@@ -44,6 +58,13 @@ function CharacterLayoutContent() {
     try {
       await deleteConversation(conversationToDelete);
 
+      // Show success toast
+      setToast({
+        message: "Conversation deleted successfully",
+        type: "success",
+        location: "top-center",
+      });
+
       // If we're currently viewing this conversation, navigate to a new one
       if (window.location.pathname.includes(conversationToDelete)) {
         const tempId = `temp-${Date.now()}`;
@@ -57,6 +78,17 @@ function CharacterLayoutContent() {
       setConversationToDelete(null);
     } catch (error) {
       console.error("Failed to delete conversation:", error);
+
+      // Show error toast
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to delete conversation";
+      setToast({
+        message: errorMessage,
+        type: "error",
+        location: "top-center",
+      });
     }
   };
 
@@ -165,6 +197,16 @@ function CharacterLayoutContent() {
         <div
           className="md:hidden fixed inset-0 bg-black/50 z-30"
           onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
+      {/* Toast notifications */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+          location={toast.location}
         />
       )}
     </div>

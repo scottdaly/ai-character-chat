@@ -224,6 +224,13 @@ export default function ConversationChat() {
   const [toast, setToast] = useState<{
     message: string;
     type: "success" | "error";
+    location?:
+      | "top-right"
+      | "top-left"
+      | "top-center"
+      | "bottom-right"
+      | "bottom-left"
+      | "bottom-center";
   } | null>(null);
 
   // Edit message state
@@ -411,12 +418,14 @@ export default function ConversationChat() {
       setToast({
         message: "Message copied to clipboard",
         type: "success",
+        location: "top-center",
       });
     } catch (err) {
       console.error("Failed to copy message:", err);
       setToast({
         message: "Failed to copy message",
         type: "error",
+        location: "top-center",
       });
     }
   };
@@ -499,6 +508,7 @@ export default function ConversationChat() {
       setToast({
         message: "Message regenerated successfully",
         type: "success",
+        location: "top-center",
       });
     } catch (err) {
       console.error("Failed to regenerate message:", err);
@@ -616,6 +626,7 @@ export default function ConversationChat() {
       setToast({
         message: "Conversation renamed successfully",
         type: "success",
+        location: "top-center",
       });
     } catch (err) {
       console.error("Failed to rename conversation:", err);
@@ -624,6 +635,7 @@ export default function ConversationChat() {
       setToast({
         message: errorMessage,
         type: "error",
+        location: "top-center",
       });
     } finally {
       setIsRenamingConversation(false);
@@ -642,6 +654,7 @@ export default function ConversationChat() {
       setToast({
         message: "Cannot delete a new conversation",
         type: "error",
+        location: "top-center",
       });
       return;
     }
@@ -665,6 +678,7 @@ export default function ConversationChat() {
       setToast({
         message: "Conversation deleted successfully",
         type: "success",
+        location: "top-center",
       });
 
       // Navigate to a new conversation
@@ -680,6 +694,7 @@ export default function ConversationChat() {
       setToast({
         message: errorMessage,
         type: "error",
+        location: "top-center",
       });
     } finally {
       setIsDeleteModalOpen(false);
@@ -1650,6 +1665,7 @@ export default function ConversationChat() {
           message={toast.message}
           type={toast.type}
           onClose={() => setToast(null)}
+          location={toast.location}
         />
       )}
 

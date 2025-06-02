@@ -6,6 +6,13 @@ interface ToastProps {
   type: "success" | "error";
   onClose: () => void;
   duration?: number;
+  location?:
+    | "top-right"
+    | "top-left"
+    | "top-center"
+    | "bottom-right"
+    | "bottom-left"
+    | "bottom-center";
 }
 
 export default function Toast({
@@ -13,6 +20,7 @@ export default function Toast({
   type,
   onClose,
   duration = 3000,
+  location = "top-right",
 }: ToastProps) {
   const [isClosing, setIsClosing] = useState(false);
 
@@ -27,7 +35,21 @@ export default function Toast({
   }, [duration, onClose]);
 
   return (
-    <div className="fixed top-4 right-4 z-50">
+    <div
+      className={`fixed ${
+        location === "top-right"
+          ? "top-4 right-4"
+          : location === "top-left"
+          ? "top-4 left-4"
+          : location === "top-center"
+          ? "top-4 left-1/2 translate-x-[-25%]"
+          : location === "bottom-right"
+          ? "bottom-4 right-4"
+          : location === "bottom-left"
+          ? "bottom-4 left-4"
+          : "bottom-4 left-1/2 translate-x-[-25%]"
+      } z-50`}
+    >
       <div
         className={`flex items-center gap-2 px-3 py-2 rounded-lg shadow-lg transform transition-all duration-300 bg-zinc-800 border border-zinc-700 ${
           isClosing ? "opacity-0 -translate-y-4" : "opacity-100 translate-y-0"
