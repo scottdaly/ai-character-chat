@@ -48,6 +48,32 @@ export const useConversations = (characterId: string) => {
     []
   );
 
+  // Function to update conversation title on the server
+  const updateConversationTitle = async (
+    conversationId: string,
+    title: string
+  ) => {
+    try {
+      const updatedConversation = await apiFetch<Conversation>(
+        `/api/conversations/${conversationId}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ title }),
+        }
+      );
+
+      // Update local state
+      updateConversation(updatedConversation);
+
+      return updatedConversation;
+    } catch (err) {
+      setError(
+        err instanceof Error ? err : new Error("Failed to update conversation")
+      );
+      throw err;
+    }
+  };
+
   const createConversation = async () => {
     try {
       console.log(
@@ -103,6 +129,7 @@ export const useConversations = (characterId: string) => {
     deleteConversation,
     loadConversations,
     updateConversation,
+    updateConversationTitle,
     isLoading,
     error,
   };

@@ -1,4 +1,4 @@
-import { FiX } from 'react-icons/fi';
+import { FiX } from "react-icons/fi";
 
 interface ConfirmationModalProps {
   isOpen: boolean;
@@ -16,28 +16,45 @@ export default function ConfirmationModal({
   onConfirm,
   title,
   message,
-  confirmText = 'Delete',
-  cancelText = 'Cancel'
+  confirmText = "Delete",
+  cancelText = "Cancel",
 }: ConfirmationModalProps) {
   if (!isOpen) return null;
 
+  // Handle backdrop click to close modal
+  const handleBackdropClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  };
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4 relative">
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-white"
-        >
-          <FiX size={20} />
-        </button>
-        
-        <h2 className="text-xl font-semibold mb-2">{title}</h2>
-        <p className="text-gray-300 mb-6">{message}</p>
-        
-        <div className="flex justify-end gap-3">
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+      onClick={handleBackdropClick}
+    >
+      <div
+        className="bg-zinc-800 border border-zinc-700 p-6 rounded-xl w-full max-w-md space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold">{title}</h2>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-zinc-700 rounded-lg transition-colors cursor-pointer"
+            >
+              <FiX />
+            </button>
+          </div>
+
+          <p className="text-zinc-300 text-sm leading-relaxed">{message}</p>
+        </div>
+
+        <div className="flex gap-2 justify-end pt-2">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors"
+            className="px-4 py-2 rounded-lg border border-zinc-600 hover:bg-zinc-700 hover:border-zinc-700 transition-colors duration-300 ease-in-out cursor-pointer"
           >
             {cancelText}
           </button>
@@ -46,7 +63,7 @@ export default function ConfirmationModal({
               onConfirm();
               onClose();
             }}
-            className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 transition-colors"
+            className="px-4 py-2 rounded-lg bg-red-600/75 hover:bg-red-600/90 hover:text-white transition-colors duration-300 ease-in-out cursor-pointer"
           >
             {confirmText}
           </button>
@@ -54,4 +71,4 @@ export default function ConfirmationModal({
       </div>
     </div>
   );
-} 
+}

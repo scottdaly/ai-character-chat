@@ -1,54 +1,95 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Link, useParams, useNavigate, useLocation } from "react-router-dom";
 import { useConversations } from "../api/conversations";
-import { FiPlus } from "react-icons/fi";
-import ConfirmationModal from "./ConfirmationModal";
+import { FiPlus, FiMoreHorizontal, FiEdit3, FiTrash2 } from "react-icons/fi";
 
-export default function ConversationList() {
+interface ConversationListProps {
+  onDeleteConversation: (conversationId: string) => void;
+}
+
+export default function ConversationList({
+  onDeleteConversation,
+}: ConversationListProps) {
   const { characterId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { conversations, loadConversations, deleteConversation } =
+  const { conversations, loadConversations, updateConversationTitle } =
     useConversations(characterId!);
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [conversationToDelete, setConversationToDelete] = useState<
-    string | null
-  >(null);
+
+  // Dropdown and rename state
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Refresh conversations when characterId or URL changes
   useEffect(() => {
     loadConversations();
   }, [characterId, location.pathname]);
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
+        setOpenDropdown(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const handleNewConversation = () => {
     const tempId = `temp-${Date.now()}`;
     navigate(`/dashboard/characters/${characterId}/conversations/${tempId}`);
   };
 
-  // const handleDelete = async (e: React.MouseEvent, conversationId: string) => {
-  //   e.preventDefault(); // Prevent navigation
-  //   e.stopPropagation(); // Prevent event bubbling
-  //   setConversationToDelete(conversationId);
-  //   setDeleteModalOpen(true);
-  // };
+  const handleMenuClick = (e: React.MouseEvent, conversationId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setOpenDropdown(openDropdown === conversationId ? null : conversationId);
+  };
 
-  const handleConfirmDelete = async () => {
-    if (!conversationToDelete) return;
+  const handleRename = (
+    e: React.MouseEvent,
+    conversationId: string,
+    currentTitle: string
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setRenamingId(conversationId);
+    setRenameValue(currentTitle);
+    setOpenDropdown(null);
+  };
+
+  const handleRenameSubmit = async (conversationId: string) => {
+    if (!renameValue.trim()) {
+      setRenamingId(null);
+      return;
+    }
 
     try {
-      await deleteConversation(conversationToDelete);
-
-      // If we're currently viewing this conversation, navigate to a new one
-      if (location.pathname.includes(conversationToDelete)) {
-        handleNewConversation();
-      }
-
-      // Close the modal and clear the conversation to delete
-      setDeleteModalOpen(false);
-      setConversationToDelete(null);
+      await updateConversationTitle(conversationId, renameValue.trim());
+      setRenamingId(null);
+      setRenameValue("");
     } catch (error) {
-      console.error("Failed to delete conversation:", error);
+      console.error("Failed to rename conversation:", error);
     }
+  };
+
+  const handleRenameCancel = () => {
+    setRenamingId(null);
+    setRenameValue("");
+  };
+
+  const handleDelete = (e: React.MouseEvent, conversationId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setOpenDropdown(null);
+    onDeleteConversation(conversationId);
   };
 
   return (
@@ -67,42 +108,94 @@ export default function ConversationList() {
           const isSelected = location.pathname.endsWith(
             `/conversations/${convo.id}`
           );
+          const isRenaming = renamingId === convo.id;
+
           return (
-            <Link
+            <div
               key={convo.id}
-              to={`/dashboard/characters/${characterId}/conversations/${convo.id}`}
-              className={`block px-2 py-1 rounded-lg transition-colors relative group
-                ${isSelected ? "bg-zinc-700/60" : "hover:bg-zinc-800"}`}
+              className={`relative rounded-lg transition-colors group ${
+                isSelected ? "bg-zinc-700/60" : "hover:bg-zinc-800"
+              }`}
             >
-              <h4 className="font-medium text-sm">{convo.title}</h4>
-              <p className="text-xs text-zinc-400 line-clamp-1">
-                {convo.lastMessage || "New conversation"}
-              </p>
-              {/* <div className="flex items-center justify-between mt-2 text-xs text-gray-400">
-                <span>{new Date(convo.createdAt).toLocaleDateString()}</span>
-                <button
-                  onClick={(e) => handleDelete(e, convo.id)}
-                  className="p-1.5 rounded-lg cursor-pointer text-gray-400 hover:text-red-400 hover:bg-black/50 md:opacity-0 md:group-hover:opacity-100 transition-all"
-                  title="Delete conversation"
+              <Link
+                to={`/dashboard/characters/${characterId}/conversations/${convo.id}`}
+                className="block px-2 py-2 relative"
+              >
+                {isRenaming ? (
+                  <div
+                    className="space-y-1"
+                    onClick={(e) => e.preventDefault()}
+                  >
+                    <input
+                      type="text"
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          handleRenameSubmit(convo.id);
+                        } else if (e.key === "Escape") {
+                          handleRenameCancel();
+                        }
+                      }}
+                      onBlur={() => handleRenameSubmit(convo.id)}
+                      className="w-full bg-zinc-800 text-white text-sm font-medium px-2 py-1 rounded border border-zinc-600 focus:border-zinc-500 focus:outline-none"
+                      autoFocus
+                    />
+                    <p className="text-xs text-zinc-400 line-clamp-1 pr-8">
+                      {convo.lastMessage || "New conversation"}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="pr-8">
+                    <h4 className="font-medium text-sm line-clamp-1">
+                      {convo.title}
+                    </h4>
+                    <p className="text-xs text-zinc-400 line-clamp-1">
+                      {convo.lastMessage || "New conversation"}
+                    </p>
+                  </div>
+                )}
+              </Link>
+
+              {/* Menu Button - Positioned outside Link to fix z-index issues */}
+              {!isRenaming && (
+                <div className="absolute top-1/2 right-2 -translate-y-1/2">
+                  <button
+                    onClick={(e) => handleMenuClick(e, convo.id)}
+                    className="p-1.5 rounded-lg cursor-pointer text-gray-300 hover:text-gray-100 opacity-0 group-hover:opacity-100 transition-all duration-200"
+                    title="More options"
+                  >
+                    <FiMoreHorizontal />
+                  </button>
+                </div>
+              )}
+
+              {/* Dropdown Menu - Positioned outside Link with higher z-index */}
+              {openDropdown === convo.id && !isRenaming && (
+                <div
+                  ref={dropdownRef}
+                  className="absolute right-2 top-8 bg-zinc-800 border border-zinc-700 rounded-lg shadow-lg py-1 z-[60] min-w-[120px] px-1"
                 >
-                  <FiTrash2 />
-                </button>
-              </div> */}
-            </Link>
+                  <button
+                    onClick={(e) => handleRename(e, convo.id, convo.title)}
+                    className="w-full text-left px-2 py-2 rounded-md text-sm text-gray-300 hover:bg-zinc-700/60 hover:text-white flex items-center gap-2"
+                  >
+                    <FiEdit3 className="h-3 w-3" />
+                    Rename
+                  </button>
+                  <button
+                    onClick={(e) => handleDelete(e, convo.id)}
+                    className="w-full text-left px-2 py-2 rounded-md text-sm text-red-300 hover:bg-red-500/15 flex items-center gap-2"
+                  >
+                    <FiTrash2 className="h-3 w-3" />
+                    Delete
+                  </button>
+                </div>
+              )}
+            </div>
           );
         })}
       </div>
-
-      <ConfirmationModal
-        isOpen={deleteModalOpen}
-        onClose={() => {
-          setDeleteModalOpen(false);
-          setConversationToDelete(null);
-        }}
-        onConfirm={handleConfirmDelete}
-        title="Delete Conversation"
-        message="Are you sure you want to delete this conversation? This action cannot be undone."
-      />
     </div>
   );
 }

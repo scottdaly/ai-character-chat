@@ -171,7 +171,7 @@ export default function CharacterSettings({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-zinc-800 p-6 rounded-xl w-full max-w-md space-y-4">
+      <div className="bg-zinc-800 border border-zinc-700 p-6 rounded-xl w-full max-w-md space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold">Edit Character</h2>
           <button
@@ -346,14 +346,14 @@ export default function CharacterSettings({
         <div className="flex gap-2 justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600"
+            className="px-4 py-2 rounded-lg border border-zinc-600 hover:bg-zinc-700 hover:border-zinc-700 transition-colors duration-300 ease-in-out"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 rounded-lg bg-zinc-100 hover:bg-white text-zinc-800 hover:text-zinc-900 font-semibold transition-colors duration-300 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSaving ? "Saving..." : "Save Changes"}
           </button>

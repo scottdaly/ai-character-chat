@@ -2781,6 +2781,51 @@ app.get(
   }
 );
 
+// Add endpoint to update a conversation
+app.put(
+  "/api/conversations/:conversationId",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const conversation = await Conversation.findOne({
+        where: {
+          id: req.params.conversationId,
+          UserId: req.user.id,
+        },
+      });
+
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+
+      const { title } = req.body;
+
+      if (!title || !title.trim()) {
+        return res.status(400).json({ error: "Title is required" });
+      }
+
+      // Update the conversation
+      await conversation.update({ title: title.trim() });
+
+      // Return the updated conversation
+      const updatedConversation = await Conversation.findOne({
+        where: { id: conversation.id },
+        include: [
+          {
+            model: Character,
+            attributes: ["name", "model"],
+          },
+        ],
+      });
+
+      res.json(updatedConversation);
+    } catch (err) {
+      console.error("Failed to update conversation:", err);
+      res.status(500).json({ error: "Failed to update conversation" });
+    }
+  }
+);
+
 // Add admin routes
 app.get("/api/admin/characters", authenticateToken, async (req, res) => {
   if (!req.user.isAdmin) return res.status(403).json({ error: "Unauthorized" });

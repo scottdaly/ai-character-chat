@@ -6,6 +6,8 @@ import ConversationList from "./ConversationList";
 import { useCharacter } from "../api/characters";
 import { useAuth } from "../contexts/AuthContext";
 import CharacterSettings from "./CharacterSettings";
+import ConfirmationModal from "./ConfirmationModal";
+import { useConversations } from "../api/conversations";
 import { getModelAlias } from "./CharacterCard";
 
 export default function CharacterLayout() {
@@ -13,8 +15,15 @@ export default function CharacterLayout() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { character } = useCharacter(characterId!);
+  const { deleteConversation } = useConversations(characterId!);
   const [showSettings, setShowSettings] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  // Delete conversation state
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [conversationToDelete, setConversationToDelete] = useState<
+    string | null
+  >(null);
 
   // Improved ownership check to handle both string and number types
   const isOwner =
@@ -36,6 +45,34 @@ export default function CharacterLayout() {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  // Handle delete conversation
+  const handleDeleteConversation = (conversationId: string) => {
+    setConversationToDelete(conversationId);
+    setDeleteModalOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!conversationToDelete) return;
+
+    try {
+      await deleteConversation(conversationToDelete);
+
+      // If we're currently viewing this conversation, navigate to a new one
+      if (window.location.pathname.includes(conversationToDelete)) {
+        const tempId = `temp-${Date.now()}`;
+        navigate(
+          `/dashboard/characters/${characterId}/conversations/${tempId}`
+        );
+      }
+
+      // Close the modal and clear the conversation to delete
+      setDeleteModalOpen(false);
+      setConversationToDelete(null);
+    } catch (error) {
+      console.error("Failed to delete conversation:", error);
+    }
+  };
 
   return (
     <div className="flex h-screen bg-zinc-900/40 w-full">
@@ -114,7 +151,7 @@ export default function CharacterLayout() {
           </div>
         </div>
         <div className="flex-1 overflow-y-auto minimal-dark-scrollbar">
-          <ConversationList />
+          <ConversationList onDeleteConversation={handleDeleteConversation} />
         </div>
       </div>
 
@@ -134,6 +171,18 @@ export default function CharacterLayout() {
           }}
         />
       )}
+
+      {/* Delete Conversation Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={deleteModalOpen}
+        onClose={() => {
+          setDeleteModalOpen(false);
+          setConversationToDelete(null);
+        }}
+        onConfirm={handleConfirmDelete}
+        title="Delete Conversation"
+        message="Are you sure you want to delete this conversation? This action cannot be undone."
+      />
 
       {/* Mobile Overlay */}
       {isSidebarOpen && (

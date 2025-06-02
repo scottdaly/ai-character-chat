@@ -1,7 +1,11 @@
 @import "tailwindcss";
 
 body {
-  background-color: #18181b;
+  background-color: #27272a;
+}
+
+button {
+  cursor: pointer;
 }
 
 /* Apply scrollbar-gutter only to containers that actually scroll */
