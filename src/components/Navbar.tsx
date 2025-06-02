@@ -1,8 +1,9 @@
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { FiSettings, FiLogOut, FiMenu, FiX } from "react-icons/fi";
 import LogoutModal from "./LogoutModal";
+import UserAvatar from "./UserAvatar";
 
 interface NavbarProps {
   subscriptionTier?: string;
@@ -15,27 +16,8 @@ export default function Navbar({
 }: NavbarProps) {
   const { logout, user } = useAuth();
   const path = useLocation();
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
-      ) {
-        setIsDropdownOpen(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, []);
 
   // Close mobile menu when route changes
   useEffect(() => {
@@ -43,28 +25,12 @@ export default function Navbar({
   }, [path.pathname]);
 
   const handleLogout = () => {
-    setIsDropdownOpen(false);
     setIsLogoutModalOpen(true);
   };
 
   const confirmLogout = () => {
     setIsLogoutModalOpen(false);
     logout();
-  };
-
-  // Generate a gradient background based on username
-  const getGradientBackground = (username: string) => {
-    const colors = [
-      "from-blue-500 to-purple-500",
-      "from-green-500 to-blue-500",
-      "from-purple-500 to-pink-500",
-      "from-yellow-500 to-red-500",
-      "from-pink-500 to-orange-500",
-    ];
-    const hash = username
-      .split("")
-      .reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    return colors[hash % colors.length];
   };
 
   return (
@@ -159,69 +125,7 @@ export default function Navbar({
           )}
 
           {/* Avatar and Dropdown */}
-          <div className="relative" ref={dropdownRef}>
-            <button
-              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              className="flex items-center justify-center w-10 h-10 rounded-full overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-            >
-              {user?.profilePicture ? (
-                <img
-                  src={user.profilePicture}
-                  alt={user.displayName}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div
-                  className={`w-full h-full bg-gradient-to-br ${getGradientBackground(
-                    user?.username || user?.email || "user"
-                  )} flex items-center justify-center text-white relative`}
-                >
-                  <div className="absolute inset-0 opacity-30 mix-blend-overlay">
-                    <svg className="w-full h-full">
-                      <filter id="noise">
-                        <feTurbulence
-                          type="fractalNoise"
-                          baseFrequency="0.65"
-                          numOctaves="3"
-                          stitchTiles="stitch"
-                        />
-                        <feColorMatrix type="saturate" values="0" />
-                      </filter>
-                      <rect width="100%" height="100%" filter="url(#noise)" />
-                    </svg>
-                  </div>
-                </div>
-              )}
-            </button>
-
-            {/* Dropdown Menu */}
-            {isDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-48 bg-zinc-800 rounded-lg shadow-lg py-1 z-50 border border-zinc-700">
-                <div className="px-4 py-2 border-b border-zinc-700">
-                  <p className="text-sm font-medium text-white">
-                    {user?.username}
-                  </p>
-                  <p className="text-xs text-gray-400 truncate">
-                    {user?.email}
-                  </p>
-                </div>
-                <Link
-                  to="/settings"
-                  className="flex items-center px-4 py-2 text-sm text-gray-300 hover:bg-zinc-700 hover:text-white cursor-pointer"
-                >
-                  <FiSettings className="mr-2" />
-                  Account Settings
-                </Link>
-                <button
-                  onClick={handleLogout}
-                  className="flex items-center w-full px-4 py-2 text-sm text-gray-300 hover:bg-zinc-700 hover:text-white cursor-pointer"
-                >
-                  <FiLogOut className="mr-2" />
-                  Logout
-                </button>
-              </div>
-            )}
-          </div>
+          <UserAvatar />
         </div>
       </div>
 
@@ -321,40 +225,7 @@ export default function Navbar({
           {/* User section */}
           <div className="absolute bottom-0 left-0 right-0 p-4">
             <div className="flex items-center gap-3 mb-4">
-              <div className="flex items-center justify-center w-12 h-12 rounded-full overflow-hidden">
-                {user?.profilePicture ? (
-                  <img
-                    src={user.profilePicture}
-                    alt={user.displayName}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div
-                    className={`w-full h-full bg-gradient-to-br ${getGradientBackground(
-                      user?.username || user?.email || "user"
-                    )} flex items-center justify-center text-white relative`}
-                  >
-                    <div className="absolute inset-0 opacity-30 mix-blend-overlay">
-                      <svg className="w-full h-full">
-                        <filter id="noise-mobile">
-                          <feTurbulence
-                            type="fractalNoise"
-                            baseFrequency="0.65"
-                            numOctaves="3"
-                            stitchTiles="stitch"
-                          />
-                          <feColorMatrix type="saturate" values="0" />
-                        </filter>
-                        <rect
-                          width="100%"
-                          height="100%"
-                          filter="url(#noise-mobile)"
-                        />
-                      </svg>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <UserAvatar size="lg" showDropdown={false} />
               <div className="flex-1">
                 <p className="text-sm font-medium text-white">
                   {user?.displayName}

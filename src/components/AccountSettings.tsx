@@ -20,6 +20,13 @@ export default function AccountSettings() {
   const [toast, setToast] = useState<{
     message: string;
     type: "success" | "error";
+    location?:
+      | "top-right"
+      | "top-left"
+      | "top-center"
+      | "bottom-right"
+      | "bottom-left"
+      | "bottom-center";
   } | null>(null);
   const [isRemoveModalOpen, setIsRemoveModalOpen] = useState(false);
   const [isEditingUsername, setIsEditingUsername] = useState(false);
@@ -76,7 +83,7 @@ export default function AccountSettings() {
       console.log("3a. Invalid file type");
       const errorMessage = "Please select an image file";
       setUploadError(errorMessage);
-      setToast({ message: errorMessage, type: "error" });
+      setToast({ message: errorMessage, type: "error", location: "top-right" });
       return;
     }
 
@@ -85,7 +92,7 @@ export default function AccountSettings() {
       console.log("3b. File too large");
       const errorMessage = "Image must be less than 5MB";
       setUploadError(errorMessage);
-      setToast({ message: errorMessage, type: "error" });
+      setToast({ message: errorMessage, type: "error", location: "top-right" });
       return;
     }
 
@@ -129,6 +136,7 @@ export default function AccountSettings() {
               return {
                 message: "Profile picture updated successfully",
                 type: "success",
+                location: "top-right",
               };
             });
             // Clear any upload errors on success
@@ -150,6 +158,7 @@ export default function AccountSettings() {
           setToast({
             message: errorMessage,
             type: "error",
+            location: "top-right",
           });
         }
       };
@@ -158,7 +167,11 @@ export default function AccountSettings() {
         console.error("FileReader error:", error);
         const errorMessage = "Failed to read the image file";
         setUploadError(errorMessage);
-        setToast({ message: errorMessage, type: "error" });
+        setToast({
+          message: errorMessage,
+          type: "error",
+          location: "top-right",
+        });
       };
 
       console.log("4a. Starting to read file...");
@@ -171,6 +184,7 @@ export default function AccountSettings() {
       setToast({
         message: errorMessage,
         type: "error",
+        location: "top-right",
       });
     } finally {
       console.log("11. Finishing upload process");
@@ -238,6 +252,7 @@ export default function AccountSettings() {
       setToast({
         message: "Profile picture removed successfully",
         type: "success",
+        location: "top-right",
       });
       setIsRemoveModalOpen(false);
     } catch (err) {
@@ -247,6 +262,7 @@ export default function AccountSettings() {
             ? err.message
             : "Failed to remove profile picture",
         type: "error",
+        location: "top-right",
       });
     } finally {
       setIsLoading(false);
@@ -336,7 +352,11 @@ export default function AccountSettings() {
           ...user,
           username: newUsername.trim(),
         });
-        setToast({ message: "Username updated successfully", type: "success" });
+        setToast({
+          message: "Username updated successfully",
+          type: "success",
+          location: "top-right",
+        });
         setIsEditingUsername(false);
         setIsConfirmModalOpen(false);
       }
@@ -345,6 +365,7 @@ export default function AccountSettings() {
         message:
           err instanceof Error ? err.message : "Failed to update username",
         type: "error",
+        location: "top-right",
       });
     } finally {
       setIsLoading(false);
@@ -395,6 +416,7 @@ export default function AccountSettings() {
         message:
           err instanceof Error ? err.message : "Failed to delete account",
         type: "error",
+        location: "top-right",
       });
       setIsDeleteModalOpen(false);
     } finally {
@@ -612,6 +634,7 @@ export default function AccountSettings() {
           message={toast.message}
           type={toast.type}
           onClose={() => setToast(null)}
+          location={toast.location}
         />
       )}
     </div>

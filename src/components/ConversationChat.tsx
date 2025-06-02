@@ -29,6 +29,7 @@ import ConfirmationModal from "./ConfirmationModal";
 import { IoRefresh } from "react-icons/io5";
 import { MessageTreeNode } from "../types";
 import MarkdownMessage from "./MarkdownMessage";
+import UserAvatar from "./UserAvatar";
 
 // Typewriter effect component for smooth streaming
 const TypewriterText = ({
@@ -1237,7 +1238,7 @@ export default function ConversationChat() {
         id="messages-container"
         className="flex-1 space-y-4 w-full overflow-y-auto chat-container relative"
       >
-        <div className="top-0 flex sticky items-center justify-between w-full bg-mainBG border-b border-mainBG-lighter xl:border-none xl:bg-transparent z-10 py-1 px-1">
+        <div className="top-0 flex sticky items-center justify-between w-full bg-mainBG border-b border-mainBG-lighter xl:border-none xl:bg-transparent z-10 py-2 px-1">
           <div>
             {/* Mobile Sidebar Toggle Button */}
             {!isSidebarOpen && (
@@ -1250,40 +1251,45 @@ export default function ConversationChat() {
             )}
           </div>
 
-          {/* Header Options Button with Dropdown */}
-          <div className="relative">
-            <button
-              onClick={handleHeaderDropdownToggle}
-              className="flex flex-row items-center gap-2 p-3 hover:bg-zinc-700/50 group/options rounded-lg transition-all duration-300 ease-in-out"
-            >
-              <HiDotsVertical
-                className="text-zinc-200 group-hover/options:text-zinc-100 transition-all duration-300 ease-in-out"
-                size={20}
-              />
-            </button>
-
-            {/* Dropdown Menu */}
-            {isHeaderDropdownOpen && !isNewConversation && (
-              <div
-                ref={headerDropdownRef}
-                className="absolute right-0 top-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-lg py-1 z-[60] min-w-[140px] px-1"
+          {/* Header Right Side - Avatar and Options */}
+          <div className="flex items-center gap-2 px-3">
+            {/* Header Options Button with Dropdown */}
+            <div className="relative">
+              <button
+                onClick={handleHeaderDropdownToggle}
+                className="flex flex-row items-center gap-2 p-3 hover:bg-zinc-700/50 group/options rounded-lg transition-all duration-300 ease-in-out"
               >
-                <button
-                  onClick={handleRenameConversation}
-                  className="w-full text-left px-3 py-2 rounded-md text-sm text-gray-300 hover:bg-zinc-700/60 hover:text-white flex items-center gap-2"
+                <HiDotsVertical
+                  className="text-zinc-200 group-hover/options:text-zinc-100 transition-all duration-300 ease-in-out"
+                  size={20}
+                />
+              </button>
+
+              {/* Dropdown Menu */}
+              {isHeaderDropdownOpen && !isNewConversation && (
+                <div
+                  ref={headerDropdownRef}
+                  className="absolute right-0 top-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-lg py-1 z-[60] min-w-[140px] px-1"
                 >
-                  <FiEdit3 className="h-3 w-3" />
-                  Rename
-                </button>
-                <button
-                  onClick={handleDeleteConversation}
-                  className="w-full text-left px-3 py-2 rounded-md text-sm text-red-300 hover:bg-red-500/15 flex items-center gap-2"
-                >
-                  <FiTrash2 className="h-3 w-3" />
-                  Delete
-                </button>
-              </div>
-            )}
+                  <button
+                    onClick={handleRenameConversation}
+                    className="w-full text-left px-3 py-2 rounded-md text-sm text-gray-300 hover:bg-zinc-700/60 hover:text-white flex items-center gap-2"
+                  >
+                    <FiEdit3 className="h-3 w-3" />
+                    Rename
+                  </button>
+                  <button
+                    onClick={handleDeleteConversation}
+                    className="w-full text-left px-3 py-2 rounded-md text-sm text-red-300 hover:bg-red-500/15 flex items-center gap-2"
+                  >
+                    <FiTrash2 className="h-3 w-3" />
+                    Delete
+                  </button>
+                </div>
+              )}
+            </div>
+            {/* User Avatar */}
+            <UserAvatar size="sm" />
           </div>
         </div>
         <div className="max-w-4xl p-4 mx-auto flex flex-col h-full">
