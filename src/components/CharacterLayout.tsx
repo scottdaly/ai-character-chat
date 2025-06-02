@@ -98,7 +98,7 @@ export default function CharacterLayout() {
               {isOwner && (
                 <button
                   onClick={() => setShowSettings(true)}
-                  className="p-2 rounded-lg text-gray-300 hover:bg-zinc-700 transition-colors cursor-pointer"
+                  className="p-3 rounded-xl text-gray-300 bg-zinc-800 hover:text-zinc-100 hover:bg-zinc-700/80 transition-colors cursor-pointer"
                   title="Edit character settings"
                 >
                   <FiSettings />

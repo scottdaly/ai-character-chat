@@ -91,12 +91,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
       if (hasRecentData) {
         shouldLoad = false;
-        console.log("[DataContext] Using cached data, skipping load");
         return currentState; // No change needed
       }
 
       shouldLoad = true;
-      console.log("[DataContext] Setting loading state, will fetch data");
       // Set loading state
       return { ...currentState, isLoading: true, error: null };
     });
@@ -106,7 +104,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      console.log("[DataContext] Fetching user characters...");
       const data = await apiFetch<Character[]>("/api/characters");
       const characters = Array.isArray(data) ? data : [];
 
@@ -243,7 +240,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   // Invalidate just user characters cache
   const invalidateUserCharacters = useCallback(() => {
-    console.log("[DataContext] Invalidating user characters cache");
     setUserCharacters(createEmptyCache([]));
   }, []);
 

@@ -27,6 +27,27 @@ export const useConversations = (characterId: string) => {
     }
   }, [characterId, apiFetch]);
 
+  // Function to update a single conversation in the list
+  const updateConversation = useCallback(
+    (updatedConversation: Partial<Conversation> & { id: string }) => {
+      setConversations((prevConversations) => {
+        const index = prevConversations.findIndex(
+          (conv) => conv.id === updatedConversation.id
+        );
+        if (index !== -1) {
+          const newConversations = [...prevConversations];
+          newConversations[index] = {
+            ...newConversations[index],
+            ...updatedConversation,
+          };
+          return newConversations;
+        }
+        return prevConversations;
+      });
+    },
+    []
+  );
+
   const createConversation = async () => {
     try {
       console.log(
@@ -39,7 +60,7 @@ export const useConversations = (characterId: string) => {
           method: "POST",
         }
       );
-      setConversations((prev) => [newConversation, ...prev]); // Add new conversation to start
+      setConversations((prev) => [newConversation, ...prev]);
 
       // Invalidate user characters cache so Dashboard will refresh and show this character
       console.log(
@@ -81,6 +102,7 @@ export const useConversations = (characterId: string) => {
     createConversation,
     deleteConversation,
     loadConversations,
+    updateConversation,
     isLoading,
     error,
   };

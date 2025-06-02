@@ -26,25 +26,6 @@ export default function Dashboard() {
   const isLoading = userCharacters.isLoading;
   const error = userCharacters.error;
 
-  // Debug logging
-  useEffect(() => {
-    console.log("[Dashboard] State update:", {
-      charactersCount: characters.length,
-      isLoading,
-      error: error?.message,
-      showSkeletons,
-      isContentVisible,
-      timestamp: userCharacters.timestamp,
-    });
-  }, [
-    characters.length,
-    isLoading,
-    error,
-    showSkeletons,
-    isContentVisible,
-    userCharacters.timestamp,
-  ]);
-
   // Load characters when component mounts (will use cache if available)
   useEffect(() => {
     loadUserCharacters();
@@ -176,7 +157,7 @@ export default function Dashboard() {
       />
 
       {/* Content */}
-      <div className="flex-1 p-4">
+      <div className="flex-1 px-4 py-2">
         <div className="max-w-6xl mx-auto flex flex-col gap-8">
           {/* Welcome Message */}
           <div className="flex flex-col md:flex-row justify-between items-center mt-4">

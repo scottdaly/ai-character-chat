@@ -12,7 +12,8 @@ export const useMessages = (
   subscriptionStatus: { tier: string } | null,
   userConversations: UserConversationWithCharacter[],
   isLoadingUserConversations: boolean,
-  onConversationUpdate?: () => void
+  onConversationUpdate?: () => void,
+  onConversationDataUpdate?: (conversationData: any) => void
 ) => {
   const { apiFetch, user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -155,29 +156,38 @@ export const useMessages = (
         const newConversation = await createConversation();
         setRealConversationId(newConversation.id);
 
-        const data = await apiFetch<Message[]>(
-          `/api/conversations/${newConversation.id}/messages`,
-          {
-            method: "POST",
-            body: JSON.stringify({ content, attachments }),
-          }
-        );
+        const data = await apiFetch<
+          Message[] | { messages: Message[]; conversation?: any }
+        >(`/api/conversations/${newConversation.id}/messages`, {
+          method: "POST",
+          body: JSON.stringify({ content, attachments }),
+        });
 
-        // Handle both array response (new messages) and reload from server
+        // Handle both array response (legacy) and new object response
         if (Array.isArray(data)) {
           setMessages(data);
+        } else if (data && "messages" in data) {
+          // New format with conversation data
+          setMessages(data.messages);
+
+          // If we have conversation data, trigger immediate conversation list update
+          if (data.conversation) {
+            if (onConversationDataUpdate) {
+              onConversationDataUpdate(data.conversation);
+            } else if (onConversationUpdate) {
+              onConversationUpdate();
+            }
+          }
         } else {
           // Reload messages to get the updated tree structure
           await loadMessages(newConversation.id);
         }
 
-        // Notify parent component to refresh conversation list
-        // This is especially important for title updates after first message
-        // Add a small delay to ensure server has updated the title
+        // Trigger conversation list update for title changes
         if (onConversationUpdate) {
           setTimeout(() => {
             onConversationUpdate();
-          }, 500);
+          }, 100); // Reduced delay since we now have immediate updates
         }
 
         return data;
@@ -187,15 +197,14 @@ export const useMessages = (
       // Show user message immediately
       setMessages((prevMessages) => [...prevMessages, userMessage]);
 
-      const data = await apiFetch<Message[]>(
-        `/api/conversations/${conversationId}/messages`,
-        {
-          method: "POST",
-          body: JSON.stringify({ content, attachments }),
-        }
-      );
+      const data = await apiFetch<
+        Message[] | { messages: Message[]; conversation?: any }
+      >(`/api/conversations/${conversationId}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ content, attachments }),
+      });
 
-      // Handle both array response (new messages) and reload from server
+      // Handle both array response (legacy) and new object response
       if (Array.isArray(data)) {
         // Replace the temporary message with the real messages
         setMessages((prevMessages) => {
@@ -206,6 +215,25 @@ export const useMessages = (
           // Add the new messages
           return [...withoutTemp, ...data];
         });
+      } else if (data && "messages" in data) {
+        // New format with conversation data
+        setMessages((prevMessages) => {
+          // Remove the temporary message
+          const withoutTemp = prevMessages.filter(
+            (msg) => msg.id !== userMessage.id
+          );
+          // Add the new messages
+          return [...withoutTemp, ...data.messages];
+        });
+
+        // If we have conversation data, trigger immediate conversation list update
+        if (data.conversation) {
+          if (onConversationDataUpdate) {
+            onConversationDataUpdate(data.conversation);
+          } else if (onConversationUpdate) {
+            onConversationUpdate();
+          }
+        }
       } else {
         // Reload messages to get the updated tree structure
         await loadMessages(conversationId);
@@ -215,7 +243,7 @@ export const useMessages = (
       if (onConversationUpdate) {
         setTimeout(() => {
           onConversationUpdate();
-        }, 500);
+        }, 100); // Reduced delay since we now have immediate updates
       }
 
       return data;
@@ -261,10 +289,238 @@ export const useMessages = (
     []
   );
 
+  // Streaming message function using Server-Sent Events
+  const sendMessageStream = async (
+    content: string,
+    attachments?: MessageAttachment[]
+  ) => {
+    if (isAccessDenied) {
+      throw (
+        accessError || new Error("Access Denied: Upgrade to send messages.")
+      );
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      // Create temporary user message for immediate display
+      const tempUserMessage: Message = {
+        id: `temp-user-${Date.now()}`,
+        content,
+        role: "user",
+        createdAt: new Date(),
+        ConversationId: conversationId,
+        CharacterId: characterId,
+        UserId: "temp",
+        attachments,
+      };
+
+      // Create temporary assistant message for streaming
+      const tempAssistantMessage: Message = {
+        id: `temp-assistant-${Date.now()}`,
+        content: "",
+        role: "assistant",
+        createdAt: new Date(),
+        ConversationId: conversationId,
+        CharacterId: characterId,
+        UserId: "temp",
+      };
+
+      // For new conversations, create conversation first
+      let targetConversationId = conversationId;
+      if (conversationId.startsWith("temp-")) {
+        const newConversation = await createConversation();
+
+        setRealConversationId(newConversation.id);
+        targetConversationId = newConversation.id;
+
+        // Update message conversation IDs
+        tempUserMessage.ConversationId = newConversation.id;
+        tempAssistantMessage.ConversationId = newConversation.id;
+      }
+
+      // Add both messages to UI immediately
+      setMessages((prevMessages) => {
+        const newMessages = [
+          ...prevMessages,
+          tempUserMessage,
+          tempAssistantMessage,
+        ];
+
+        return newMessages;
+      });
+
+      // Set up streaming with direct fetch (apiFetch doesn't support streaming)
+      const streamUrl = `${
+        import.meta.env.VITE_API_URL
+      }/api/conversations/${targetConversationId}/messages/stream`;
+      const token = localStorage.getItem("token");
+
+      return new Promise((resolve, reject) => {
+        const controller = new AbortController();
+
+        fetch(streamUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token && { Authorization: `Bearer ${token}` }),
+          },
+          body: JSON.stringify({ content, attachments }),
+          signal: controller.signal,
+        })
+          .then(async (response) => {
+            if (!response.ok) {
+              throw new Error(
+                `HTTP ${response.status}: ${response.statusText}`
+              );
+            }
+
+            const reader = response.body?.getReader();
+            if (!reader) {
+              throw new Error("No response body reader available");
+            }
+
+            const decoder = new TextDecoder();
+            let streamingContent = "";
+            let finalMessage: Message | null = null;
+            let conversationUpdate: any = null;
+            let updateTimeoutRef: NodeJS.Timeout | null = null;
+
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+
+                if (done) break;
+
+                const chunk = decoder.decode(value, { stream: true });
+                const lines = chunk.split("\n");
+
+                for (const line of lines) {
+                  if (line.startsWith("data: ")) {
+                    const data = line.slice(6);
+                    if (data.trim() === "") continue;
+
+                    try {
+                      const eventData = JSON.parse(data);
+
+                      switch (eventData.type) {
+                        case "userMessage":
+                          // Replace temp user message with real one
+                          setMessages((prevMessages) => {
+                            return prevMessages.map((msg) =>
+                              msg.id === tempUserMessage.id
+                                ? { ...eventData.message }
+                                : msg
+                            );
+                          });
+                          break;
+
+                        case "delta":
+                          // Append content to streaming message with debounced updates
+                          streamingContent += eventData.content;
+
+                          // Use a debounced update for smoother performance
+                          if (updateTimeoutRef) {
+                            clearTimeout(updateTimeoutRef);
+                          }
+
+                          // Update more frequently for better responsiveness, but still batched
+                          updateTimeoutRef = setTimeout(() => {
+                            setMessages((prevMessages) => {
+                              return prevMessages.map((msg) =>
+                                msg.id === tempAssistantMessage.id
+                                  ? { ...msg, content: streamingContent }
+                                  : msg
+                              );
+                            });
+                          }, 30); // Update every 30ms for smoother but still efficient updates
+                          break;
+
+                        case "complete":
+                          // Clear any pending debounced update
+                          if (updateTimeoutRef) {
+                            clearTimeout(updateTimeoutRef);
+                          }
+
+                          // Replace temp assistant message with final one
+                          finalMessage = eventData.message;
+                          conversationUpdate = eventData.conversation;
+
+                          setMessages((prevMessages) => {
+                            return prevMessages.map((msg) =>
+                              msg.id === tempAssistantMessage.id
+                                ? { ...eventData.message }
+                                : msg
+                            );
+                          });
+                          break;
+
+                        case "conversationUpdate":
+                          // Handle conversation title updates
+                          conversationUpdate = eventData.conversation;
+                          if (onConversationDataUpdate) {
+                            onConversationDataUpdate(eventData.conversation);
+                          }
+                          break;
+
+                        case "error":
+                          throw new Error(eventData.error);
+                      }
+                    } catch (parseError) {
+                      console.error("Failed to parse SSE data:", parseError);
+                    }
+                  }
+                }
+              }
+
+              // Trigger conversation list updates
+              if (conversationUpdate) {
+                if (onConversationDataUpdate) {
+                  onConversationDataUpdate(conversationUpdate);
+                } else if (onConversationUpdate) {
+                  setTimeout(onConversationUpdate, 100);
+                }
+              }
+
+              resolve({
+                messages: finalMessage ? [finalMessage] : [],
+                conversation: conversationUpdate,
+              });
+            } catch (streamError) {
+              reader.releaseLock();
+              throw streamError;
+            }
+          })
+          .catch((error) => {
+            console.error("💥 [STREAM] Stream error occurred:", error);
+            // Remove temporary messages on error
+            setMessages((prevMessages) => {
+              return prevMessages.filter(
+                (msg) =>
+                  msg.id !== tempUserMessage.id &&
+                  msg.id !== tempAssistantMessage.id
+              );
+            });
+
+            reject(error);
+          });
+      });
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to send message";
+      setError(new Error(errorMessage));
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return {
     messages,
     conversationTree,
     sendMessage,
+    sendMessageStream,
     switchBranch,
     isLoading,
     error,

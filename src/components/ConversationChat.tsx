@@ -25,6 +25,67 @@ import { IoRefresh } from "react-icons/io5";
 import { MessageTreeNode } from "../types";
 import MarkdownMessage from "./MarkdownMessage";
 
+// Typewriter effect component for smooth streaming
+const TypewriterText = ({
+  text,
+  isComplete = false,
+}: {
+  text: string;
+  isComplete?: boolean;
+}) => {
+  const [displayedText, setDisplayedText] = useState("");
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  // Adaptive speed based on content length
+  const getSpeed = (textLength: number) => {
+    if (textLength > 500) return 2; // Very fast for long content
+    if (textLength > 200) return 3; // Fast for medium content
+    return 5; // Normal speed for short content
+  };
+
+  // Batch size for longer content (characters per update)
+  const getBatchSize = (textLength: number) => {
+    if (textLength > 1000) return 3; // 3 characters at once for very long content
+    if (textLength > 500) return 2; // 2 characters at once for long content
+    return 1; // 1 character at a time for normal content
+  };
+
+  useEffect(() => {
+    if (isComplete) {
+      // If complete, show full text immediately
+      setDisplayedText(text);
+      return;
+    }
+
+    if (currentIndex < text.length) {
+      const speed = getSpeed(text.length);
+      const batchSize = getBatchSize(text.length);
+      const nextIndex = Math.min(currentIndex + batchSize, text.length);
+
+      const timeout = setTimeout(() => {
+        setDisplayedText(text.slice(0, nextIndex));
+        setCurrentIndex(nextIndex);
+      }, speed);
+
+      return () => clearTimeout(timeout);
+    }
+  }, [text, currentIndex, isComplete]);
+
+  // Reset when text changes significantly (new content)
+  useEffect(() => {
+    if (text.length < displayedText.length) {
+      setDisplayedText("");
+      setCurrentIndex(0);
+    }
+  }, [text, displayedText.length]);
+
+  return (
+    <div className="streaming-message">
+      <MarkdownMessage content={displayedText} />
+    </div>
+  );
+};
+
 // Typing indicator component
 const TypingIndicator = () => {
   return (
@@ -164,6 +225,22 @@ export default function ConversationChat() {
   const [editingContent, setEditingContent] = useState<string>("");
   const [isEditLoading, setIsEditLoading] = useState(false);
 
+  // Scroll state management
+  const [userScrolledUp, setUserScrolledUp] = useState(false);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  const lastMessageCountRef = useRef(0);
+
+  // Navigation delay for streaming - prevent remounting during stream
+  const isStreamingRef = useRef(false);
+  const pendingNavigationRef = useRef<string | null>(null);
+
+  // Message seen tracking
+  const [latestSeenMessageId, setLatestSeenMessageId] = useState<string | null>(
+    null
+  );
+  const [hasUnseenMessages, setHasUnseenMessages] = useState(false);
+  const latestMessageRef = useRef<HTMLDivElement>(null);
+
   // Regenerate message state
   const [regeneratingMessageId, setRegeneratingMessageId] = useState<
     string | null
@@ -180,12 +257,28 @@ export default function ConversationChat() {
   const { character } = useCharacter(characterId!);
 
   // Get conversation refresh function to update sidebar when titles change
-  const { loadConversations } = useConversations(characterId!);
+  const { loadConversations, updateConversation } = useConversations(
+    characterId!
+  );
 
   // Create a wrapper function to refresh conversation list
   const refreshConversationList = useCallback(() => {
     loadConversations();
   }, [loadConversations]);
+
+  // Create a function to update a specific conversation
+  const updateSpecificConversation = useCallback(
+    (conversationData: any) => {
+      if (conversationData && updateConversation) {
+        updateConversation({
+          id: conversationData.id,
+          title: conversationData.title,
+          lastMessage: conversationData.lastMessage,
+        });
+      }
+    },
+    [updateConversation]
+  );
 
   // Use centralized character access checking with auth context subscription tier
   const characterAccess =
@@ -196,7 +289,7 @@ export default function ConversationChat() {
   const {
     messages,
     conversationTree,
-    sendMessage,
+    sendMessageStream,
     switchBranch,
     isLoading: messagesLoading,
     error: messagesError,
@@ -212,7 +305,8 @@ export default function ConversationChat() {
     { tier: subscriptionTier }, // Use centralized subscription tier
     userConversations,
     isLoadingUserConversations,
-    refreshConversationList // Pass the wrapper function to update sidebar
+    refreshConversationList, // Pass the wrapper function to update sidebar
+    updateSpecificConversation // Pass the specific conversation update function
   );
 
   const { conversation } = useConversation(
@@ -621,6 +715,77 @@ export default function ConversationChat() {
     }
   };
 
+  // Check if user is near bottom of scroll
+  const checkScrollPosition = useCallback(() => {
+    const container = document.getElementById("messages-container");
+    if (!container) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    const scrollPosition = scrollTop + clientHeight;
+    const isNearBottom = scrollHeight - scrollPosition < 100; // Within 100px of bottom
+
+    setUserScrolledUp(!isNearBottom);
+    setShouldAutoScroll(isNearBottom);
+  }, []);
+
+  // Handle scroll events
+  useEffect(() => {
+    const container = document.getElementById("messages-container");
+    if (!container) return;
+
+    container.addEventListener("scroll", checkScrollPosition);
+    return () => container.removeEventListener("scroll", checkScrollPosition);
+  }, [checkScrollPosition]);
+
+  // Intersection Observer to detect when latest message is visible
+  useEffect(() => {
+    const latestMessageElement = latestMessageRef.current;
+    if (!latestMessageElement) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            // User can see the latest message - mark as seen
+            const latestMessage = messages[messages.length - 1];
+            if (latestMessage) {
+              setLatestSeenMessageId(latestMessage.id);
+              setHasUnseenMessages(false);
+              setUserScrolledUp(false);
+            }
+          }
+        });
+      },
+      {
+        root: document.getElementById("messages-container"),
+        threshold: 0.1, // Trigger when at least 10% of the message is visible
+        rootMargin: "0px 0px -50px 0px", // Require the message to be 50px above the bottom
+      }
+    );
+
+    observer.observe(latestMessageElement);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [messages]);
+
+  // Update unseen message state when messages change
+  useEffect(() => {
+    if (messages.length === 0) return;
+
+    const latestMessage = messages[messages.length - 1];
+    const hasNewMessage = latestMessage.id !== latestSeenMessageId;
+
+    // Only mark as unseen if:
+    // 1. There's a new message
+    // 2. It's not a temp message (streaming)
+    // 3. User is scrolled up
+    if (hasNewMessage && !latestMessage.id.startsWith("temp-")) {
+      setHasUnseenMessages(userScrolledUp);
+    }
+  }, [messages, latestSeenMessageId, userScrolledUp]);
+
   useEffect(() => {
     if (conversation) {
       document.title = `${conversation.title} - NeverMade`;
@@ -634,10 +799,15 @@ export default function ConversationChat() {
 
   useEffect(() => {
     if (realConversationId && realConversationId !== conversationId) {
-      navigate(
-        `/dashboard/characters/${characterId}/conversations/${realConversationId}`,
-        { replace: true }
-      );
+      // If currently streaming, delay the navigation until streaming completes
+      if (isStreamingRef.current) {
+        pendingNavigationRef.current = realConversationId;
+      } else {
+        navigate(
+          `/dashboard/characters/${characterId}/conversations/${realConversationId}`,
+          { replace: true }
+        );
+      }
     }
   }, [realConversationId]);
 
@@ -658,6 +828,10 @@ export default function ConversationChat() {
   const handleSend = async () => {
     if (!newMessage.trim() && selectedImages.length === 0) return;
 
+    // Reset scroll state when user sends a message - they want to see the response
+    setShouldAutoScroll(true);
+    setUserScrolledUp(false);
+
     const messageContent = newMessage;
     const messageAttachments = [...selectedImages];
     setNewMessage("");
@@ -669,7 +843,10 @@ export default function ConversationChat() {
     }
 
     try {
-      await sendMessage(messageContent, messageAttachments);
+      // Set streaming flag to prevent navigation during stream
+      isStreamingRef.current = true;
+
+      await sendMessageStream(messageContent, messageAttachments);
     } catch (err) {
       console.error("Failed to send message:", err);
 
@@ -708,14 +885,93 @@ export default function ConversationChat() {
         message: displayMessage,
         type: "error",
       });
+    } finally {
+      // Always clear streaming flag
+      isStreamingRef.current = false;
+
+      if (
+        pendingNavigationRef.current &&
+        pendingNavigationRef.current !== conversationId
+      ) {
+        navigate(
+          `/dashboard/characters/${characterId}/conversations/${pendingNavigationRef.current}`,
+          { replace: true }
+        );
+        pendingNavigationRef.current = null;
+      } else if (pendingNavigationRef.current) {
+        // This should never happen but just in case
+        // [NAV] Pending navigation exists but condition not met:
+      }
     }
   };
 
   useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    // Only auto-scroll when:
+    // 1. User is near bottom (shouldAutoScroll is true)
+    // 2. A new message was added (not just content updated during streaming)
+    // 3. User hasn't manually scrolled up
+
+    const messageCountChanged = messages.length !== lastMessageCountRef.current;
+
+    if (messagesEndRef.current && shouldAutoScroll && messageCountChanged) {
+      messagesEndRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "end",
+      });
     }
-  }, [messages, messagesLoading]);
+
+    // Update the message count ref
+    lastMessageCountRef.current = messages.length;
+  }, [messages.length, shouldAutoScroll]); // Only depend on message count, not content
+
+  // Force scroll when conversation changes (new conversation)
+  useEffect(() => {
+    if (conversationId && messagesEndRef.current) {
+      setTimeout(() => {
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({
+            behavior: "smooth",
+            block: "end",
+          });
+        }
+      }, 100); // Small delay to ensure messages are rendered
+
+      // Reset scroll state for new conversation
+      setShouldAutoScroll(true);
+      setUserScrolledUp(false);
+      setLatestSeenMessageId(null);
+      setHasUnseenMessages(false);
+    }
+  }, [conversationId]);
+
+  // Handle scroll to bottom manually
+  const scrollToBottom = useCallback(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "end",
+      });
+      setShouldAutoScroll(true);
+      setUserScrolledUp(false);
+
+      // Mark latest message as seen when manually scrolling to bottom
+      const latestMessage = messages[messages.length - 1];
+      if (latestMessage) {
+        setLatestSeenMessageId(latestMessage.id);
+        setHasUnseenMessages(false);
+      }
+    }
+  }, [messages]);
+
+  // Re-check scroll position when loading state changes
+  useEffect(() => {
+    if (!messagesLoading) {
+      // Small delay to ensure DOM has updated after streaming completes
+      setTimeout(() => {
+        checkScrollPosition();
+      }, 100);
+    }
+  }, [messagesLoading, checkScrollPosition]);
 
   // Add keyboard shortcuts for branch navigation
   useEffect(() => {
@@ -824,7 +1080,7 @@ export default function ConversationChat() {
 
       <div
         id="messages-container"
-        className="flex-1 p-4 space-y-4 w-full overflow-y-auto"
+        className="flex-1 p-4 space-y-4 w-full overflow-y-auto chat-container relative"
       >
         <div className="max-w-4xl mx-auto flex flex-col h-full">
           {messages.length === 0 &&
@@ -843,9 +1099,10 @@ export default function ConversationChat() {
                 )}
               </div>
             )}
-          {messages.map((message) => (
+          {messages.map((message, index) => (
             <div
               key={message.id}
+              ref={index === messages.length - 1 ? latestMessageRef : null}
               className={`group flex flex-col ${
                 message.role === "user" ? "items-end" : "items-start"
               } space-y-2`}
@@ -941,7 +1198,10 @@ export default function ConversationChat() {
                         <span>Regenerating response...</span>
                       </div>
                     ) : (
-                      <MarkdownMessage content={message.content} />
+                      <TypewriterText
+                        text={message.content}
+                        isComplete={!message.id.startsWith("temp-")}
+                      />
                     )
                   ) : (
                     <p className="whitespace-pre-wrap">{message.content}</p>
@@ -1042,6 +1302,32 @@ export default function ConversationChat() {
           <div ref={messagesEndRef} />
         </div>
       </div>
+
+      {/* Floating scroll to bottom button */}
+      {hasUnseenMessages && (
+        <div className="absolute bottom-20 right-8 z-10">
+          <button
+            onClick={scrollToBottom}
+            className="bg-zinc-800 hover:bg-zinc-700 text-white rounded-full p-3 shadow-lg border border-zinc-600 transition-all duration-200 flex items-center gap-2"
+            title="Scroll to bottom"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 14l-7 7m0 0l-7-7m7 7V3"
+              />
+            </svg>
+            <span className="text-sm hidden sm:inline">New messages</span>
+          </button>
+        </div>
+      )}
 
       <div className="flex px-4 pb-4 w-full items-center justify-center">
         <div className="flex flex-col items-center justify-center w-full">

@@ -255,3 +255,13 @@ code {
 .markdown-content a:hover {
   text-decoration: underline;
 }
+
+/* Smooth transitions for streaming content */
+.streaming-message {
+  transition: all 0.1s ease-out;
+}
+
+/* Smooth scrolling for chat container */
+.chat-container {
+  scroll-behavior: smooth;
+}

@@ -115,8 +115,6 @@ export default function Explore() {
       />
 
       <main className="container mx-auto max-w-6xl px-4 py-8 overflow-y-auto scrollable-container">
-        <h1 className="text-3xl font-bold mb-8">Explore Characters</h1>
-
         <div className="space-y-12">
           {/* Official Characters Section */}
           <section>
@@ -168,7 +166,7 @@ export default function Explore() {
               }`}
             >
               <h2 className="text-2xl font-semibold mb-4">
-                Community Characters
+                Trending Characters
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {publicCharacters.map((character) => (
