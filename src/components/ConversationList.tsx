@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { Link, useParams, useNavigate, useLocation } from "react-router-dom";
 import { useConversations } from "../api/conversations";
+import { useSidebar } from "../contexts/SidebarContext";
 import { FiPlus, FiMoreHorizontal, FiEdit3, FiTrash2 } from "react-icons/fi";
 
 interface ConversationListProps {
@@ -15,6 +16,7 @@ export default function ConversationList({
   const location = useLocation();
   const { conversations, loadConversations, updateConversationTitle } =
     useConversations(characterId!);
+  const { setIsSidebarOpen } = useSidebar();
 
   // Dropdown and rename state
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
@@ -45,6 +47,17 @@ export default function ConversationList({
   const handleNewConversation = () => {
     const tempId = `temp-${Date.now()}`;
     navigate(`/dashboard/characters/${characterId}/conversations/${tempId}`);
+    // Close sidebar on mobile when creating new conversation
+    if (window.innerWidth < 768) {
+      setIsSidebarOpen(false);
+    }
+  };
+
+  const handleConversationClick = () => {
+    // Close sidebar on mobile when clicking on a conversation
+    if (window.innerWidth < 768) {
+      setIsSidebarOpen(false);
+    }
   };
 
   const handleMenuClick = (e: React.MouseEvent, conversationId: string) => {
@@ -120,6 +133,7 @@ export default function ConversationList({
               <Link
                 to={`/dashboard/characters/${characterId}/conversations/${convo.id}`}
                 className="block px-2 py-2 relative"
+                onClick={handleConversationClick}
               >
                 {isRenaming ? (
                   <div

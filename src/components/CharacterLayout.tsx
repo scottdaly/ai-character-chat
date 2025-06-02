@@ -1,23 +1,24 @@
 // src/components/CharacterLayout.tsx
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Outlet, useNavigate, useParams } from "react-router-dom";
-import { FiSettings, FiMenu, FiX } from "react-icons/fi";
+import { FiSettings, FiX } from "react-icons/fi";
 import ConversationList from "./ConversationList";
 import { useCharacter } from "../api/characters";
 import { useAuth } from "../contexts/AuthContext";
+import { SidebarProvider, useSidebar } from "../contexts/SidebarContext";
 import CharacterSettings from "./CharacterSettings";
 import ConfirmationModal from "./ConfirmationModal";
 import { useConversations } from "../api/conversations";
 import { getModelAlias } from "./CharacterCard";
 
-export default function CharacterLayout() {
+function CharacterLayoutContent() {
   const { characterId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { character } = useCharacter(characterId!);
   const { deleteConversation } = useConversations(characterId!);
   const [showSettings, setShowSettings] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const { isSidebarOpen, setIsSidebarOpen } = useSidebar();
 
   // Delete conversation state
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -30,21 +31,6 @@ export default function CharacterLayout() {
     user?.id && character?.UserId
       ? String(user.id) === String(character.UserId)
       : false;
-
-  // Close sidebar by default on mobile
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 768) {
-        setIsSidebarOpen(false);
-      } else {
-        setIsSidebarOpen(true);
-      }
-    };
-
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
 
   // Handle delete conversation
   const handleDeleteConversation = (conversationId: string) => {
@@ -76,16 +62,6 @@ export default function CharacterLayout() {
 
   return (
     <div className="flex h-screen bg-mainBG w-full">
-      {/* Mobile Sidebar Toggle Button */}
-      {!isSidebarOpen && (
-        <button
-          onClick={() => setIsSidebarOpen(true)}
-          className="md:hidden fixed top-4 left-4 z-50 p-2 bg-black/50 rounded-lg text-gray-300 hover:bg-gray-700"
-        >
-          <FiMenu size={24} />
-        </button>
-      )}
-
       {/* Conversation List Sidebar */}
       <div
         className={`fixed md:static inset-y-0 left-0 w-72  border-r bg-mainBG-dark border-zinc-800 flex flex-col transform transition-transform duration-300 ease-in-out ${
@@ -93,13 +69,19 @@ export default function CharacterLayout() {
         } md:translate-x-0 z-40`}
       >
         <div className="p-4">
-          <div className="flex items-center justify-between mb-8">
+          <div className="flex items-start justify-between mb-8">
             <button
               onClick={() => navigate("/dashboard")}
               className="flex cursor-pointer items-center gap-2 text-zinc-100 instrument-serif-regular hover:text-zinc-100 transition-colors duration-300 ease-in-out text-3xl"
             >
               <img src="/favicon.svg" alt="Nevermade" className="w-4 mt-1.5" />
               Nevermade
+            </button>
+            <button
+              onClick={() => setIsSidebarOpen(false)}
+              className="md:hidden p-2 rounded-lg text-zinc-300 hover:bg-zinc-700 transition-colors"
+            >
+              <FiX size={20} />
             </button>
           </div>
           <div className="flex flex-row justify-between items-center">
@@ -141,12 +123,6 @@ export default function CharacterLayout() {
                   <FiSettings />
                 </button>
               )}
-              <button
-                onClick={() => setIsSidebarOpen(false)}
-                className="md:hidden p-2 rounded-lg text-gray-400 hover:bg-zinc-700 transition-colors"
-              >
-                <FiX size={20} />
-              </button>
             </div>
           </div>
         </div>
@@ -192,5 +168,13 @@ export default function CharacterLayout() {
         />
       )}
     </div>
+  );
+}
+
+export default function CharacterLayout() {
+  return (
+    <SidebarProvider>
+      <CharacterLayoutContent />
+    </SidebarProvider>
   );
 }

@@ -7,9 +7,13 @@ import {
   FiCopy,
   FiChevronLeft,
   FiChevronRight,
+  FiMenu,
+  FiEdit3,
+  FiTrash2,
 } from "react-icons/fi";
 import { AiFillEdit } from "react-icons/ai";
 import { useAuth } from "../contexts/AuthContext";
+import { useSidebar } from "../contexts/SidebarContext";
 import { useMessages } from "../api/messages";
 import { useConversation } from "../api/conversations";
 import { useConversations } from "../api/conversations";
@@ -21,6 +25,7 @@ import { MessageAttachment } from "../types";
 import { supportsImages } from "../config/models";
 import Toast from "./Toast";
 import Tooltip from "./Tooltip";
+import ConfirmationModal from "./ConfirmationModal";
 import { IoRefresh } from "react-icons/io5";
 import { MessageTreeNode } from "../types";
 import MarkdownMessage from "./MarkdownMessage";
@@ -206,6 +211,7 @@ export default function ConversationChat() {
   const { characterId, conversationId } = useParams();
   const navigate = useNavigate();
   const { apiFetch, subscriptionTier } = useAuth();
+  const { isSidebarOpen, setIsSidebarOpen } = useSidebar();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -247,6 +253,15 @@ export default function ConversationChat() {
   >(null);
   const [originalMessageContent, setOriginalMessageContent] =
     useState<string>("");
+
+  // Header dropdown state
+  const [isHeaderDropdownOpen, setIsHeaderDropdownOpen] = useState(false);
+  const [isRenamingConversation, setIsRenamingConversation] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const headerDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Delete conversation confirmation state
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   const {
     conversations: userConversations,
@@ -558,6 +573,116 @@ export default function ConversationChat() {
         message: errorMessage,
         type: "error",
       });
+    }
+  };
+
+  // Header dropdown handlers
+  const handleHeaderDropdownToggle = () => {
+    setIsHeaderDropdownOpen(!isHeaderDropdownOpen);
+  };
+
+  const handleRenameConversation = () => {
+    if (conversation) {
+      setIsRenamingConversation(true);
+      setRenameValue(conversation.title);
+      setIsHeaderDropdownOpen(false);
+    }
+  };
+
+  const handleRenameSubmit = async () => {
+    if (!renameValue.trim() || !conversation) {
+      setIsRenamingConversation(false);
+      return;
+    }
+
+    try {
+      const conversationIdToUse = realConversationId || conversationId;
+      if (!conversationIdToUse || conversationIdToUse.startsWith("temp-")) {
+        setToast({
+          message: "Cannot rename a new conversation",
+          type: "error",
+        });
+        return;
+      }
+
+      await apiFetch(`/api/conversations/${conversationIdToUse}`, {
+        method: "PUT",
+        body: JSON.stringify({ title: renameValue.trim() }),
+      });
+
+      // Update the conversation list
+      refreshConversationList();
+
+      setToast({
+        message: "Conversation renamed successfully",
+        type: "success",
+      });
+    } catch (err) {
+      console.error("Failed to rename conversation:", err);
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to rename conversation";
+      setToast({
+        message: errorMessage,
+        type: "error",
+      });
+    } finally {
+      setIsRenamingConversation(false);
+      setRenameValue("");
+    }
+  };
+
+  const handleRenameCancel = () => {
+    setIsRenamingConversation(false);
+    setRenameValue("");
+  };
+
+  const handleDeleteConversation = () => {
+    const conversationIdToUse = realConversationId || conversationId;
+    if (!conversationIdToUse || conversationIdToUse.startsWith("temp-")) {
+      setToast({
+        message: "Cannot delete a new conversation",
+        type: "error",
+      });
+      return;
+    }
+
+    // Open the confirmation modal
+    setIsDeleteModalOpen(true);
+    setIsHeaderDropdownOpen(false);
+  };
+
+  const handleConfirmDelete = async () => {
+    const conversationIdToUse = realConversationId || conversationId;
+    if (!conversationIdToUse || conversationIdToUse.startsWith("temp-")) {
+      return;
+    }
+
+    try {
+      await apiFetch(`/api/conversations/${conversationIdToUse}`, {
+        method: "DELETE",
+      });
+
+      setToast({
+        message: "Conversation deleted successfully",
+        type: "success",
+      });
+
+      // Navigate to a new conversation
+      const tempId = `temp-${Date.now()}`;
+      navigate(`/dashboard/characters/${characterId}/conversations/${tempId}`);
+
+      // Update the conversation list
+      refreshConversationList();
+    } catch (err) {
+      console.error("Failed to delete conversation:", err);
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to delete conversation";
+      setToast({
+        message: errorMessage,
+        type: "error",
+      });
+    } finally {
+      setIsDeleteModalOpen(false);
     }
   };
 
@@ -1027,6 +1152,21 @@ export default function ConversationChat() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [conversationTree, editingMessageId, handleSwitchBranch]);
 
+  // Close header dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        headerDropdownRef.current &&
+        !headerDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsHeaderDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   if (!characterId || !conversationId) {
     return (
       <div className="flex-1 flex items-center justify-center text-red-500">
@@ -1083,13 +1223,53 @@ export default function ConversationChat() {
         className="flex-1 space-y-4 w-full overflow-y-auto chat-container relative"
       >
         <div className="top-0 flex sticky items-center justify-between w-full bg-mainBG border-b border-mainBG-lighter xl:border-none xl:bg-transparent z-10 py-1 px-1">
-          <div></div>
-          <button className="flex flex-row items-center gap-2 p-3 hover:bg-zinc-700/50 group/options rounded-lg transition-all duration-300 ease-in-out">
-            <HiDotsVertical
-              className="text-zinc-400 group-hover/options:text-zinc-100 transition-all duration-300 ease-in-out"
-              size={20}
-            />
-          </button>
+          <div>
+            {/* Mobile Sidebar Toggle Button */}
+            {!isSidebarOpen && (
+              <button
+                onClick={() => setIsSidebarOpen(true)}
+                className="md:hidden z-50 p-2 rounded-lg text-zinc-200 hover:bg-black/50 hover:text-white transition-all duration-300 ease-in-out"
+              >
+                <FiMenu size={24} />
+              </button>
+            )}
+          </div>
+
+          {/* Header Options Button with Dropdown */}
+          <div className="relative">
+            <button
+              onClick={handleHeaderDropdownToggle}
+              className="flex flex-row items-center gap-2 p-3 hover:bg-zinc-700/50 group/options rounded-lg transition-all duration-300 ease-in-out"
+            >
+              <HiDotsVertical
+                className="text-zinc-200 group-hover/options:text-zinc-100 transition-all duration-300 ease-in-out"
+                size={20}
+              />
+            </button>
+
+            {/* Dropdown Menu */}
+            {isHeaderDropdownOpen && !isNewConversation && (
+              <div
+                ref={headerDropdownRef}
+                className="absolute right-0 top-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-lg py-1 z-[60] min-w-[140px] px-1"
+              >
+                <button
+                  onClick={handleRenameConversation}
+                  className="w-full text-left px-3 py-2 rounded-md text-sm text-gray-300 hover:bg-zinc-700/60 hover:text-white flex items-center gap-2"
+                >
+                  <FiEdit3 className="h-3 w-3" />
+                  Rename
+                </button>
+                <button
+                  onClick={handleDeleteConversation}
+                  className="w-full text-left px-3 py-2 rounded-md text-sm text-red-300 hover:bg-red-500/15 flex items-center gap-2"
+                >
+                  <FiTrash2 className="h-3 w-3" />
+                  Delete
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         <div className="max-w-4xl p-4 mx-auto flex flex-col h-full">
           {messages.length === 0 &&
@@ -1472,6 +1652,79 @@ export default function ConversationChat() {
           onClose={() => setToast(null)}
         />
       )}
+
+      {/* Rename Conversation Modal */}
+      {isRenamingConversation && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={(e) => {
+            // Only close if clicking the backdrop itself
+            if (e.target === e.currentTarget) {
+              handleRenameCancel();
+            }
+          }}
+        >
+          <div
+            className="bg-zinc-800 border border-zinc-700 rounded-lg p-6 w-full max-w-md mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold text-white">
+                Rename Conversation
+              </h3>
+              <button
+                onClick={handleRenameCancel}
+                className="text-gray-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <FiX className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mb-6">
+              <input
+                type="text"
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    handleRenameSubmit();
+                  } else if (e.key === "Escape") {
+                    handleRenameCancel();
+                  }
+                }}
+                className="w-full bg-zinc-700 text-white px-3 py-3 rounded-lg border border-zinc-600 focus:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Enter conversation title"
+                autoFocus
+              />
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={handleRenameCancel}
+                className="px-4 py-2 rounded-lg border border-zinc-700 bg-transparent text-gray-300 hover:text-white hover:bg-zinc-700 cursor-pointer transition-all duration-300 ease-in-out"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRenameSubmit}
+                disabled={!renameValue.trim()}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-300 ease-in-out"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Conversation Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={handleConfirmDelete}
+        title="Delete Conversation"
+        message="Are you sure you want to delete this conversation? This action cannot be undone."
+      />
     </div>
   );
 }
