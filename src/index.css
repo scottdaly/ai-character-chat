@@ -8,6 +8,16 @@ button {
   cursor: pointer;
 }
 
+@theme {
+  --color-mainBG: #212124;
+  --color-mainBG-light: #27272a;
+  --color-mainBG-lighter: #2f2f32;
+  --color-mainBG-lightest: #3f3f46;
+  --color-mainBG-dark: #18181b;
+  --color-mainBG-darker: #121215;
+  --color-mainBG-darkest: #09090b;
+}
+
 /* Apply scrollbar-gutter only to containers that actually scroll */
 .scrollable-container {
   scrollbar-gutter: stable;

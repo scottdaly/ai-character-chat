@@ -75,7 +75,7 @@ export default function CharacterLayout() {
   };
 
   return (
-    <div className="flex h-screen bg-zinc-900/40 w-full">
+    <div className="flex h-screen bg-mainBG w-full">
       {/* Mobile Sidebar Toggle Button */}
       {!isSidebarOpen && (
         <button
@@ -88,7 +88,7 @@ export default function CharacterLayout() {
 
       {/* Conversation List Sidebar */}
       <div
-        className={`fixed md:static inset-y-0 left-0 w-72  border-r bg-zinc-900 border-zinc-700 flex flex-col transform transition-transform duration-300 ease-in-out ${
+        className={`fixed md:static inset-y-0 left-0 w-72  border-r bg-mainBG-dark border-zinc-800 flex flex-col transform transition-transform duration-300 ease-in-out ${
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         } md:translate-x-0 z-40`}
       >

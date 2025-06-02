@@ -16,7 +16,7 @@ import { useConversations } from "../api/conversations";
 import { useUserConversations } from "../api/useUserConversations";
 import { useCharacter } from "../api/characters";
 import { checkCharacterAccess } from "../api/characterAccess";
-import { HiArrowSmRight } from "react-icons/hi";
+import { HiArrowSmRight, HiDotsVertical } from "react-icons/hi";
 import { MessageAttachment } from "../types";
 import { supportsImages } from "../config/models";
 import Toast from "./Toast";
@@ -1080,9 +1080,18 @@ export default function ConversationChat() {
 
       <div
         id="messages-container"
-        className="flex-1 p-4 space-y-4 w-full overflow-y-auto chat-container relative"
+        className="flex-1 space-y-4 w-full overflow-y-auto chat-container relative"
       >
-        <div className="max-w-4xl mx-auto flex flex-col h-full">
+        <div className="top-0 flex sticky items-center justify-between w-full bg-mainBG border-b border-mainBG-lighter xl:border-none xl:bg-transparent z-10 py-1 px-1">
+          <div></div>
+          <button className="flex flex-row items-center gap-2 p-3 hover:bg-zinc-700/50 group/options rounded-lg transition-all duration-300 ease-in-out">
+            <HiDotsVertical
+              className="text-zinc-400 group-hover/options:text-zinc-100 transition-all duration-300 ease-in-out"
+              size={20}
+            />
+          </button>
+        </div>
+        <div className="max-w-4xl p-4 mx-auto flex flex-col h-full">
           {messages.length === 0 &&
             !messagesLoading &&
             !isAccessDenied &&
@@ -1333,7 +1342,7 @@ export default function ConversationChat() {
         <div className="flex flex-col items-center justify-center w-full">
           <div className="flex gap-2 max-w-4xl w-full">
             <div
-              className="flex flex-1 flex-col px-3 py-2 gap-2 w-full bg-zinc-700/80 border border-zinc-600/50 rounded-lg focus-within:border-zinc-400/40 message-scrollbar cursor-text"
+              className="flex flex-1 flex-col px-2 py-2 gap-2 w-full bg-mainBG-lighter border border-mainBG-lightest rounded-lg focus-within:border-zinc-400/40 message-scrollbar cursor-text"
               onClick={(e) => {
                 // Check if the clicked element is a button or inside a button
                 const target = e.target as HTMLElement;
@@ -1391,7 +1400,7 @@ export default function ConversationChat() {
                     ? "Type your message or upload images..."
                     : "Type your message..."
                 }
-                className="w-full text-zinc-100 placeholder:text-zinc-400 focus:outline-none resize-none bg-transparent border-none min-h-[24px] max-h-[150px] overflow-y-auto"
+                className="w-full px-1 text-zinc-100 placeholder:text-zinc-400 focus:outline-none resize-none bg-transparent border-none min-h-[24px] max-h-[150px] overflow-y-auto"
                 disabled={
                   messagesLoading ||
                   isEditLoading ||
@@ -1405,7 +1414,7 @@ export default function ConversationChat() {
                 ref={textareaRef}
               />
               <div className="flex flex-row justify-between">
-                <div className="flex flex-row gap-2 py-1">
+                <div className="flex flex-row gap-2 pt-2">
                   {currentModelSupportsImages && (
                     <>
                       <input
@@ -1417,7 +1426,7 @@ export default function ConversationChat() {
                         className="hidden"
                       />
                       <button
-                        className="text-zinc-200 hover:text-white hover:bg-zinc-800 border border-zinc-500 hover:border-zinc-800 px-1.5 py-1.5 rounded-lg flex items-center gap-2 disabled:opacity-50 cursor-pointer transition-colors duration-300 ease-in-out group/image-upload"
+                        className="flex items-center text-zinc-200 hover:text-white hover:bg-zinc-800 border border-zinc-700 hover:border-zinc-800 px-1.5 py-1.5 rounded-lg  gap-2 disabled:opacity-50 cursor-pointer transition-colors duration-300 ease-in-out group/image-upload"
                         onClick={(e) => {
                           e.stopPropagation();
                           fileInputRef.current?.click();
@@ -1435,7 +1444,7 @@ export default function ConversationChat() {
                     e.stopPropagation();
                     handleSend();
                   }}
-                  className="bg-zinc-900/80 hover:bg-zinc-900 text-zinc-100 px-3 py-3 rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:hover:bg-zinc-700 disabled:hover:border-zinc-500 disabled:cursor-text cursor-pointer transition-colors duration-300 ease-in-out group/send disabled:group/send:cursor-text"
+                  className="bg-zinc-700 hover:bg-zinc-600/70 text-zinc-100 px-3 py-3 rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:hover:bg-zinc-700 disabled:hover:border-zinc-500 disabled:cursor-text cursor-pointer transition-colors duration-300 ease-in-out group/send disabled:group/send:cursor-text"
                   title="Send message"
                   disabled={
                     messagesLoading ||
