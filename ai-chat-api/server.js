@@ -714,7 +714,12 @@ app.use(
   cors({
     origin: process.env.FRONTEND_URL,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "Cache-Control",
+      "Accept",
+    ],
     exposedHeaders: ["Authorization"],
     credentials: true,
     preflightContinue: false,
@@ -728,7 +733,29 @@ app.options(
   cors({
     origin: process.env.FRONTEND_URL,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "Cache-Control",
+      "Accept",
+    ],
+    credentials: true,
+    optionsSuccessStatus: 200,
+  })
+);
+
+// Handle preflight OPTIONS requests specifically for streaming endpoints
+app.options(
+  "/api/conversations/*/messages/stream",
+  cors({
+    origin: process.env.FRONTEND_URL,
+    methods: ["POST", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "Cache-Control",
+      "Accept",
+    ],
     credentials: true,
     optionsSuccessStatus: 200,
   })
@@ -1909,8 +1936,19 @@ app.post(
           }
         }
 
-        // Return both messages as an array
-        return res.json([userMessage, aiMessage]);
+        // Reload conversation to get updated data
+        await conversation.reload();
+
+        // Return both messages and updated conversation data
+        return res.json({
+          messages: [userMessage, aiMessage],
+          conversation: {
+            id: conversation.id,
+            title: conversation.title,
+            lastMessage: conversation.lastMessage,
+            updatedAt: conversation.updatedAt,
+          },
+        });
       } catch (aiError) {
         console.error("AI Response Error:", aiError);
         // If AI response fails, delete the user message and throw error
@@ -3305,3 +3343,402 @@ app.delete("/api/profile/delete", authenticateToken, async (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+// Add streaming endpoint for messages (SSE)
+app.post(
+  "/api/conversations/:conversationId/messages/stream",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const conversation = await Conversation.findOne({
+        where: {
+          id: req.params.conversationId,
+          UserId: req.user.id,
+        },
+        include: [Character],
+      });
+
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+
+      // Same access validation as regular message endpoint
+      const isProUser = await checkUserSubscriptionStatus(req.user);
+      if (!isProUser) {
+        const allUserConversations = await Conversation.findAll({
+          where: { UserId: req.user.id },
+          attributes: ["CharacterId", "createdAt"],
+          order: [["createdAt", "DESC"]],
+        });
+
+        const uniqueRecentCharacterIds = [
+          ...new Set(
+            allUserConversations.map((conv) => conv.CharacterId.toString())
+          ),
+        ];
+        const currentCharacterIdStr = conversation.CharacterId.toString();
+
+        if (uniqueRecentCharacterIds.length >= 3) {
+          const allowedCharacterIdsSlice = uniqueRecentCharacterIds.slice(0, 3);
+          if (!allowedCharacterIdsSlice.includes(currentCharacterIdStr)) {
+            return res.status(403).json({
+              error:
+                "Upgrade to Pro to send messages to this character. You can chat with your 3 most recent characters on the free plan.",
+            });
+          }
+        }
+      }
+
+      if (!conversation.Character) {
+        return res
+          .status(400)
+          .json({ error: "Character not found for conversation" });
+      }
+
+      // Set up SSE headers
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        "Access-Control-Allow-Origin": process.env.FRONTEND_URL,
+        "Access-Control-Allow-Credentials": "true",
+      });
+
+      // Helper function to send SSE data
+      const sendSSE = (data) => {
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      };
+
+      try {
+        // Get conversation context (same logic as regular endpoint)
+        let previousMessages = [];
+        let parentMessageId = null;
+        let childIndex = 0;
+
+        if (conversation.currentHeadId) {
+          previousMessages = await getMessagePath(conversation.currentHeadId);
+          parentMessageId = conversation.currentHeadId;
+          childIndex = await getNextChildIndex(parentMessageId);
+        } else {
+          previousMessages = await Message.findAll({
+            where: { ConversationId: conversation.id },
+            order: [["createdAt", "ASC"]],
+          });
+          if (previousMessages.length > 0) {
+            parentMessageId = previousMessages[previousMessages.length - 1].id;
+            childIndex = 0;
+          }
+        }
+
+        // Save user message
+        const userMessage = await Message.create({
+          content: req.body.content,
+          role: "user",
+          UserId: req.user.id,
+          ConversationId: conversation.id,
+          CharacterId: conversation.CharacterId,
+          attachments: req.body.attachments || null,
+          parentId: parentMessageId,
+          childIndex: childIndex,
+        });
+
+        await conversation.Character.increment("messageCount");
+
+        // Send user message confirmation
+        sendSSE({
+          type: "userMessage",
+          message: userMessage,
+        });
+
+        // Prepare message history
+        const modelSupportsImages = supportsImages(
+          conversation.Character.model
+        );
+        const messageHistory = [
+          { role: "system", content: conversation.Character.systemPrompt },
+          ...previousMessages.map((msg) => {
+            const messageContent = { role: msg.role, content: msg.content };
+            if (
+              modelSupportsImages &&
+              msg.attachments &&
+              msg.attachments.length > 0
+            ) {
+              messageContent.content = [
+                { type: "text", text: msg.content },
+                ...msg.attachments.map((attachment) => ({
+                  type: "image_url",
+                  image_url: { url: attachment.data },
+                })),
+              ];
+            }
+            return messageContent;
+          }),
+        ];
+
+        // Add current user message
+        const currentUserMessage = { role: "user", content: req.body.content };
+        if (
+          modelSupportsImages &&
+          req.body.attachments &&
+          req.body.attachments.length > 0
+        ) {
+          currentUserMessage.content = [
+            { type: "text", text: req.body.content },
+            ...req.body.attachments.map((attachment) => ({
+              type: "image_url",
+              image_url: { url: attachment.data },
+            })),
+          ];
+        }
+        messageHistory.push(currentUserMessage);
+
+        // Stream AI response based on provider
+        const modelProvider = getModelProvider(conversation.Character.model);
+        let aiResponseContent = "";
+
+        if (modelProvider === "openai") {
+          const stream = await openai.chat.completions.create({
+            model: conversation.Character.model,
+            messages: messageHistory,
+            stream: true,
+          });
+
+          for await (const chunk of stream) {
+            const content = chunk.choices[0]?.delta?.content || "";
+            if (content) {
+              aiResponseContent += content;
+              sendSSE({
+                type: "delta",
+                content: content,
+              });
+            }
+          }
+        } else if (modelProvider === "anthropic") {
+          // Format messages for Claude
+          const formattedMessages = messageHistory.map((msg) => {
+            if (msg.role === "system") {
+              return {
+                role: "user",
+                content: `You are ${conversation.Character.name}. Here is your character description and instructions:\n${msg.content}`,
+              };
+            }
+
+            if (Array.isArray(msg.content)) {
+              const content = [];
+              for (const item of msg.content) {
+                if (item.type === "text") {
+                  content.push({ type: "text", text: item.text });
+                } else if (item.type === "image_url") {
+                  const base64Data = item.image_url.url.split(",")[1];
+                  const mimeType = item.image_url.url
+                    .split(";")[0]
+                    .split(":")[1];
+                  content.push({
+                    type: "image",
+                    source: {
+                      type: "base64",
+                      media_type: mimeType,
+                      data: base64Data,
+                    },
+                  });
+                }
+              }
+              return {
+                role: msg.role === "assistant" ? "assistant" : "user",
+                content: content,
+              };
+            }
+
+            return {
+              role: msg.role === "assistant" ? "assistant" : "user",
+              content: msg.content,
+            };
+          });
+
+          const stream = anthropic.messages.stream({
+            model: conversation.Character.model,
+            max_tokens: 1024,
+            messages: formattedMessages,
+            system: conversation.Character.systemPrompt,
+          });
+
+          for await (const messageStreamEvent of stream) {
+            if (messageStreamEvent.type === "content_block_delta") {
+              const content = messageStreamEvent.delta.text || "";
+              if (content) {
+                aiResponseContent += content;
+                sendSSE({
+                  type: "delta",
+                  content: content,
+                });
+              }
+            }
+          }
+        } else if (modelProvider === "google") {
+          // Google AI streaming implementation
+          if (!googleAI) {
+            throw new Error("Google AI is not configured");
+          }
+
+          const model = googleAI.getGenerativeModel({
+            model: conversation.Character.model,
+            systemInstruction: conversation.Character.systemPrompt,
+          });
+
+          const chatHistory = [];
+          for (const msg of messageHistory) {
+            if (msg.role === "system") continue;
+
+            let parts = [];
+            if (Array.isArray(msg.content)) {
+              for (const item of msg.content) {
+                if (item.type === "text") {
+                  parts.push({ text: item.text });
+                } else if (item.type === "image_url") {
+                  const base64Data = item.image_url.url.split(",")[1];
+                  const mimeType = item.image_url.url
+                    .split(";")[0]
+                    .split(":")[1];
+                  parts.push({
+                    inlineData: {
+                      mimeType: mimeType,
+                      data: base64Data,
+                    },
+                  });
+                }
+              }
+            } else {
+              parts = [{ text: msg.content }];
+            }
+
+            chatHistory.push({
+              role: msg.role === "assistant" ? "model" : "user",
+              parts: parts,
+            });
+          }
+
+          let result;
+          if (chatHistory.length > 1) {
+            const chat = model.startChat({
+              history: chatHistory.slice(0, -1),
+              generationConfig: {
+                maxOutputTokens: 1024,
+                temperature: 0.7,
+              },
+            });
+            const lastMessage = chatHistory[chatHistory.length - 1];
+            result = await chat.sendMessageStream(lastMessage.parts);
+          } else {
+            const userMessage = chatHistory[0];
+            result = await model.generateContentStream({
+              contents: [userMessage],
+              generationConfig: {
+                maxOutputTokens: 1024,
+                temperature: 0.7,
+              },
+            });
+          }
+
+          for await (const chunk of result.stream) {
+            const chunkText = chunk.text();
+            if (chunkText) {
+              aiResponseContent += chunkText;
+              sendSSE({
+                type: "delta",
+                content: chunkText,
+              });
+            }
+          }
+        } else {
+          throw new Error(
+            `Streaming not supported for provider: ${modelProvider}`
+          );
+        }
+
+        // Save the complete AI message
+        const aiMessage = await Message.create({
+          content: aiResponseContent,
+          role: "assistant",
+          UserId: req.user.id,
+          ConversationId: conversation.id,
+          CharacterId: conversation.CharacterId,
+          parentId: userMessage.id,
+          childIndex: 0,
+        });
+
+        // Update conversation
+        await conversation.update({
+          currentHeadId: aiMessage.id,
+          lastMessage: aiResponseContent.substring(0, 50),
+        });
+
+        // Generate title if needed
+        if (conversation.title === "New Conversation") {
+          try {
+            const titleResponse = await openai.chat.completions.create({
+              model: getDefaultModel("free"),
+              messages: [
+                {
+                  role: "system",
+                  content:
+                    "You are a conversation title generator. Generate a brief, engaging title (max 30 characters) based on the conversation. The title should capture the essence of the discussion. Respond with ONLY the title, no quotes or extra text.",
+                },
+                {
+                  role: "user",
+                  content: `User: ${req.body.content}\nAI: ${aiResponseContent}`,
+                },
+              ],
+              max_tokens: 10,
+              temperature: 0.7,
+            });
+
+            const newTitle = titleResponse.choices[0].message.content
+              .trim()
+              .replace(/^["']|["']$/g, "");
+            await conversation.update({
+              title: newTitle,
+              lastMessage: aiResponseContent.substring(0, 50),
+              currentHeadId: aiMessage.id,
+            });
+
+            sendSSE({
+              type: "conversationUpdate",
+              conversation: {
+                id: conversation.id,
+                title: newTitle,
+                lastMessage: conversation.lastMessage,
+                updatedAt: conversation.updatedAt,
+              },
+            });
+          } catch (titleError) {
+            console.error("Failed to generate title:", titleError);
+          }
+        }
+
+        // Send completion message
+        sendSSE({
+          type: "complete",
+          message: aiMessage,
+          conversation: {
+            id: conversation.id,
+            title: conversation.title,
+            lastMessage: conversation.lastMessage,
+            updatedAt: conversation.updatedAt,
+          },
+        });
+
+        res.end();
+      } catch (streamError) {
+        console.error("Streaming error:", streamError);
+        sendSSE({
+          type: "error",
+          error: streamError.message || "Failed to generate response",
+        });
+        res.end();
+      }
+    } catch (err) {
+      console.error("Stream setup error:", err);
+      res.status(500).json({ error: err.message || "Failed to setup stream" });
+    }
+  }
+);
