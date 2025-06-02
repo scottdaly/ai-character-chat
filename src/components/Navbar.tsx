@@ -112,9 +112,12 @@ export default function Navbar({
               <div className="w-16 h-3 bg-zinc-600 rounded"></div>
             </div>
           ) : subscriptionTier === "pro" ? (
-            <span className="px-2 py-1 bg-blue-500/20 text-blue-400 border border-blue-400/40 rounded-full text-xs whitespace-nowrap">
+            <Link
+              to="/plans"
+              className="px-2 py-1 bg-blue-500/20 text-blue-400 border border-blue-400/40 rounded-full text-xs whitespace-nowrap"
+            >
               Pro Plan
-            </span>
+            </Link>
           ) : (
             <Link
               to="/plans"

@@ -42,7 +42,7 @@ export default function Toast({
           : location === "top-left"
           ? "top-4 left-4"
           : location === "top-center"
-          ? "top-4 left-1/2 translate-x-[-25%]"
+          ? "top-4 left-1/2"
           : location === "bottom-right"
           ? "bottom-4 right-4"
           : location === "bottom-left"

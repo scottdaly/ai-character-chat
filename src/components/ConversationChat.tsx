@@ -1257,7 +1257,7 @@ export default function ConversationChat() {
             <div className="relative">
               <button
                 onClick={handleHeaderDropdownToggle}
-                className="flex flex-row items-center gap-2 p-3 hover:bg-zinc-700/50 group/options rounded-lg transition-all duration-300 ease-in-out"
+                className="flex flex-row items-center gap-2 p-2 hover:bg-zinc-700/50 group/options rounded-lg transition-all duration-300 ease-in-out"
               >
                 <HiDotsVertical
                   className="text-zinc-200 group-hover/options:text-zinc-100 transition-all duration-300 ease-in-out"
