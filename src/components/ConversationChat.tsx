@@ -1391,7 +1391,7 @@ export default function ConversationChat() {
                     ? "Type your message or upload images..."
                     : "Type your message..."
                 }
-                className="w-full text-gray-100 placeholder:text-gray-400 focus:outline-none resize-none bg-transparent border-none min-h-[24px] max-h-[150px] overflow-y-auto"
+                className="w-full text-zinc-100 placeholder:text-zinc-400 focus:outline-none resize-none bg-transparent border-none min-h-[24px] max-h-[150px] overflow-y-auto"
                 disabled={
                   messagesLoading ||
                   isEditLoading ||
