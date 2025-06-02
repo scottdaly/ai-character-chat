@@ -1211,7 +1211,7 @@ export default function ConversationChat() {
 
               <div className="flex flex-row justify-between w-full">
                 {message.role === "assistant" ? (
-                  <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out flex items-center justify-center flex-row gap-2 py-1 bg-zinc-700/50 border border-zinc-700 rounded-lg px-1">
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out flex items-center justify-center flex-row gap-2 bg-zinc-700/50 border border-zinc-700 rounded-lg px-1">
                     <Tooltip text="Copy message" offsetSize="large">
                       <button
                         onClick={() => handleCopyMessage(message.content)}
@@ -1278,7 +1278,7 @@ export default function ConversationChat() {
                           editingMessageId !== null ||
                           isEditLoading
                         }
-                        className="text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700/50 p-1.5 rounded flex items-center gap-2 disabled:opacity-50 cursor-pointer transition-colors duration-300 ease-in-out group/edit"
+                        className="text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700/50 px-1.5 rounded flex items-center gap-2 disabled:opacity-50 cursor-pointer transition-colors duration-300 ease-in-out group/edit"
                       >
                         <AiFillEdit className="h-4 w-4 transition-transform duration-300 ease-in-out group-hover/edit:scale-110" />
                       </button>
