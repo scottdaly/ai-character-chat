@@ -20,7 +20,7 @@ export default function Toast({
   type,
   onClose,
   duration = 3000,
-  location = "top-right",
+  location = "top-center",
 }: ToastProps) {
   const [isClosing, setIsClosing] = useState(false);
 
