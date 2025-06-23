@@ -261,6 +261,95 @@ const supportsImages = (modelId) => {
   return model?.inputTypes?.includes("images") || false;
 };
 
+// Character Categories
+const CHARACTER_CATEGORIES = [
+  {
+    id: "creative-writing",
+    name: "Creative Writing",
+    description: "Best for storytelling, roleplay, and creative content",
+    modelMapping: {
+      free: "gpt-4o-mini-2024-07-18",
+      pro: "claude-3-7-sonnet-latest",
+    },
+  },
+  {
+    id: "technical-assistant",
+    name: "Technical Assistant",
+    description: "Ideal for coding, technical questions, and problem-solving",
+    modelMapping: {
+      free: "gpt-4o-mini-2024-07-18",
+      pro: "gpt-4.1-2025-04-14",
+    },
+  },
+  {
+    id: "research-analysis",
+    name: "Research & Analysis",
+    description: "Great for factual information, research, and data analysis",
+    modelMapping: {
+      free: "gemini-2.0-flash",
+      pro: "gemini-2.5-pro-preview-05-06",
+    },
+  },
+  {
+    id: "casual-chat",
+    name: "Casual Chat",
+    description: "Perfect for everyday conversations and general assistance",
+    modelMapping: {
+      free: "gpt-4o-mini-2024-07-18",
+      pro: "chatgpt-4o-latest",
+    },
+  },
+  {
+    id: "advanced-reasoning",
+    name: "Advanced Reasoning",
+    description: "For complex problem-solving and deep analysis",
+    modelMapping: {
+      free: "gemini-2.0-flash-lite",
+      pro: "o4-mini-2025-04-16",
+    },
+  },
+];
+
+// Get model for a category based on user tier
+const getModelForCategory = (categoryId, userTier = "free") => {
+  const category = CHARACTER_CATEGORIES.find((c) => c.id === categoryId);
+  if (!category) {
+    return getDefaultModel(userTier);
+  }
+  return category.modelMapping[userTier];
+};
+
+// Get category for a model (for backward compatibility)
+const getCategoryForModel = (modelId) => {
+  for (const category of CHARACTER_CATEGORIES) {
+    if (
+      category.modelMapping.free === modelId ||
+      category.modelMapping.pro === modelId
+    ) {
+      return category.id;
+    }
+  }
+  // Default category for models not in mapping
+  const model = getModelById(modelId);
+  if (!model) return "casual-chat";
+  
+  // Try to infer category based on model provider/name
+  if (model.provider === "Anthropic" || modelId.includes("claude")) {
+    return "creative-writing";
+  } else if (modelId.includes("o4") || modelId.includes("4.1")) {
+    return "advanced-reasoning";
+  } else if (model.provider === "Google" || modelId.includes("gemini")) {
+    return "research-analysis";
+  }
+  
+  return "casual-chat";
+};
+
+// Get all category IDs for validation
+const getAllCategoryIds = () => {
+  return CHARACTER_CATEGORIES.map((cat) => cat.id);
+};
+
 module.exports = {
   AI_MODELS,
   getModelById,
@@ -272,4 +361,8 @@ module.exports = {
   getModelProvider,
   getAllModelIds,
   supportsImages,
+  CHARACTER_CATEGORIES,
+  getModelForCategory,
+  getCategoryForModel,
+  getAllCategoryIds,
 };

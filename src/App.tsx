@@ -26,6 +26,11 @@ const SubscriptionPlans = React.lazy(
   () => import("./components/SubscriptionPlans")
 );
 const Admin = React.lazy(() => import("./components/Admin"));
+const AdminAnalyticsDashboard = React.lazy(() => import("./components/AdminAnalyticsDashboard"));
+const AdminOverview = React.lazy(() => import("./components/AdminOverview"));
+const AdminUsersList = React.lazy(() => import("./components/AdminUsersList"));
+const AdminUserDetails = React.lazy(() => import("./components/AdminUserDetails"));
+const AdminExport = React.lazy(() => import("./components/AdminExport"));
 
 // Keep small/essential components as regular imports
 import CharacterLayout from "./components/CharacterLayout";
@@ -39,7 +44,7 @@ import AdminLogin from "./components/AdminLogin";
 // Loading fallback component
 function LoadingFallback() {
   return (
-    <div className="flex items-center justify-center min-h-screen bg-zinc-800">
+    <div className="flex items-center justify-center min-h-screen bg-white dark:bg-zinc-800">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
     </div>
   );
@@ -147,6 +152,48 @@ const router = createBrowserRouter([
               </Suspense>
             ),
           },
+          {
+            path: "analytics",
+            element: (
+              <Suspense fallback={<LoadingFallback />}>
+                <AdminAnalyticsDashboard />
+              </Suspense>
+            ),
+            children: [
+              {
+                index: true,
+                element: (
+                  <Suspense fallback={<LoadingFallback />}>
+                    <AdminOverview />
+                  </Suspense>
+                ),
+              },
+              {
+                path: "users",
+                element: (
+                  <Suspense fallback={<LoadingFallback />}>
+                    <AdminUsersList />
+                  </Suspense>
+                ),
+              },
+              {
+                path: "users/:userId",
+                element: (
+                  <Suspense fallback={<LoadingFallback />}>
+                    <AdminUserDetails />
+                  </Suspense>
+                ),
+              },
+              {
+                path: "export",
+                element: (
+                  <Suspense fallback={<LoadingFallback />}>
+                    <AdminExport />
+                  </Suspense>
+                ),
+              },
+            ],
+          },
         ],
       },
       {
@@ -159,7 +206,7 @@ const router = createBrowserRouter([
 
 function Layout() {
   return (
-    <div className="min-h-screen bg-zinc-800">
+    <div className="min-h-screen bg-white dark:bg-zinc-900 text-zinc-900 dark:text-gray-100">
       <Outlet />
     </div>
   );
@@ -174,7 +221,7 @@ function ProtectedRoute() {
   }
 
   return (
-    <div className="flex h-screen bg-zinc-800 text-gray-100">
+    <div className="flex h-screen bg-white dark:bg-zinc-900 text-zinc-900 dark:text-gray-100">
       {user && !user.username && <UsernamePromptModal />}
       <Outlet />
     </div>

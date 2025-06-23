@@ -108,7 +108,7 @@ export default function Explore() {
   };
 
   return (
-    <div className="min-h-screen text-gray-100">
+    <div className="min-h-screen text-gray-900  dark:text-gray-100">
       <Navbar
         subscriptionTier={subscriptionTier}
         isLoadingSubscription={isLoadingSubscription}

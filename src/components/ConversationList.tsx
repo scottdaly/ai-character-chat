@@ -110,7 +110,7 @@ export default function ConversationList({
       <div className="px-2">
         <button
           onClick={handleNewConversation}
-          className="w-full cursor-pointer border border-zinc-700 hover:bg-zinc-800 text-white py-2 px-4 rounded-lg mb-4 flex items-center justify-center gap-2 transition-colors duration-300 ease-in-out"
+          className="w-full cursor-pointer border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-white py-2 px-4 rounded-lg mb-4 flex items-center justify-center gap-2 transition-colors duration-300 ease-in-out"
         >
           <FiPlus /> New Conversation
         </button>
@@ -127,7 +127,9 @@ export default function ConversationList({
             <div
               key={convo.id}
               className={`relative rounded-lg transition-colors group ${
-                isSelected ? "bg-zinc-700/60" : "hover:bg-zinc-800"
+                isSelected
+                  ? "bg-zinc-200/70 dark:bg-zinc-700/60"
+                  : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
               }`}
             >
               <Link
@@ -152,19 +154,19 @@ export default function ConversationList({
                         }
                       }}
                       onBlur={() => handleRenameSubmit(convo.id)}
-                      className="w-full bg-zinc-800 text-white text-sm font-medium px-2 py-1 rounded border border-zinc-600 focus:border-zinc-500 focus:outline-none"
+                      className="w-full bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white text-sm font-medium px-2 py-1 rounded border border-zinc-300 dark:border-zinc-600 focus:border-zinc-500 focus:outline-none"
                       autoFocus
                     />
-                    <p className="text-xs text-zinc-400 line-clamp-1 pr-8">
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 line-clamp-1 pr-8">
                       {convo.lastMessage || "New conversation"}
                     </p>
                   </div>
                 ) : (
                   <div className="pr-8">
-                    <h4 className="font-medium text-sm line-clamp-1">
+                    <h4 className="font-medium text-sm line-clamp-1 text-zinc-900 dark:text-white">
                       {convo.title}
                     </h4>
-                    <p className="text-xs text-zinc-400 line-clamp-1">
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 line-clamp-1">
                       {convo.lastMessage || "New conversation"}
                     </p>
                   </div>
@@ -176,7 +178,7 @@ export default function ConversationList({
                 <div className="absolute top-1/2 right-2 -translate-y-1/2">
                   <button
                     onClick={(e) => handleMenuClick(e, convo.id)}
-                    className="p-1.5 rounded-lg cursor-pointer text-gray-300 hover:text-gray-100 opacity-0 group-hover:opacity-100 transition-all duration-200"
+                    className="p-1.5 rounded-lg cursor-pointer text-zinc-500 dark:text-gray-300 hover:text-zinc-800 dark:hover:text-gray-100 opacity-100 md:opacity-0  group-hover:opacity-100 transition-all duration-200"
                     title="More options"
                   >
                     <FiMoreHorizontal />
@@ -188,18 +190,18 @@ export default function ConversationList({
               {openDropdown === convo.id && !isRenaming && (
                 <div
                   ref={dropdownRef}
-                  className="absolute right-2 top-8 bg-zinc-800 border border-zinc-700 rounded-lg shadow-lg py-1 z-[60] min-w-[120px] px-1"
+                  className="absolute right-2 top-8 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg py-1 z-[60] min-w-[120px] px-1"
                 >
                   <button
                     onClick={(e) => handleRename(e, convo.id, convo.title)}
-                    className="w-full text-left px-2 py-2 rounded-md text-sm text-gray-300 hover:bg-zinc-700/60 hover:text-white flex items-center gap-2"
+                    className="w-full text-left px-2 py-2 rounded-md text-sm text-zinc-700 dark:text-gray-300 hover:bg-zinc-100 dark:hover:bg-zinc-700/60 hover:text-zinc-900 dark:hover:text-white flex items-center gap-2"
                   >
                     <FiEdit3 className="h-3 w-3" />
                     Rename
                   </button>
                   <button
                     onClick={(e) => handleDelete(e, convo.id)}
-                    className="w-full text-left px-2 py-2 rounded-md text-sm text-red-300 hover:bg-red-500/15 flex items-center gap-2"
+                    className="w-full text-left px-2 py-2 rounded-md text-sm text-red-500 dark:text-red-400 hover:bg-red-500/10 dark:hover:bg-red-500/15 flex items-center gap-2"
                   >
                     <FiTrash2 className="h-3 w-3" />
                     Delete

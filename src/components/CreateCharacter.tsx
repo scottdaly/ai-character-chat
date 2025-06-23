@@ -1,11 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FiArrowLeft, FiUpload, FiX } from "react-icons/fi";
+import { FiArrowLeft, FiUpload, FiX, FiLock, FiGlobe } from "react-icons/fi";
 import { useAuth } from "../contexts/AuthContext";
 import { useData } from "../contexts/DataContext";
 import { Character } from "../types";
-import { getModelGroups, getDefaultModel } from "../config/models";
+import { CHARACTER_CATEGORIES } from "../config/models";
 import Navbar from "./Navbar";
+import SegmentedControl from "./SegmentedControl";
 
 export default function CreateCharacter() {
   const { user, subscriptionTier, isLoadingSubscription } = useAuth();
@@ -17,28 +18,18 @@ export default function CreateCharacter() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
+  const [selectedCategory, setSelectedCategory] = useState<string>("casual-chat");
   const [newCharacter, setNewCharacter] = useState<Omit<Character, "id">>({
     name: "",
     description: "",
-    model: getDefaultModel((subscriptionTier as "free" | "pro") || "free"),
+    model: "", // Will be set by backend based on category
     systemPrompt: "",
     createdAt: new Date(),
     UserId: user?.id || "",
-    isPublic: false,
+    isPublic: true,
     messageCount: 0,
   });
 
-  // Update default model when subscription tier changes
-  useEffect(() => {
-    setNewCharacter((prev) => ({
-      ...prev,
-      model: getDefaultModel((subscriptionTier as "free" | "pro") || "free"),
-    }));
-  }, [subscriptionTier]);
-
-  const modelGroups = getModelGroups(
-    (subscriptionTier as "free" | "pro") || "free"
-  );
 
   // Handle image file selection
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -137,7 +128,7 @@ export default function CreateCharacter() {
       const formData = new FormData();
       formData.append("name", newCharacter.name);
       formData.append("description", newCharacter.description);
-      formData.append("model", newCharacter.model);
+      formData.append("category", selectedCategory);
       formData.append("systemPrompt", newCharacter.systemPrompt);
       formData.append("isPublic", newCharacter.isPublic.toString());
 
@@ -160,7 +151,7 @@ export default function CreateCharacter() {
   };
 
   return (
-    <div className="fixed inset-0 text-gray-100 overflow-y-auto">
+    <div className="fixed inset-0 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-gray-100 overflow-y-auto">
       <Navbar
         subscriptionTier={subscriptionTier}
         isLoadingSubscription={isLoadingSubscription}
@@ -171,7 +162,7 @@ export default function CreateCharacter() {
         <div className="flex items-center gap-1 mb-6">
           <button
             onClick={() => navigate("/dashboard")}
-            className="p-2 cursor-pointer hover:bg-zinc-900 rounded-lg transition-colors"
+            className="p-2 cursor-pointer text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
           >
             <FiArrowLeft size={20} />
           </button>
@@ -182,14 +173,14 @@ export default function CreateCharacter() {
         <form onSubmit={handleCreateCharacter} className="space-y-5 pb-8">
           {error && (
             <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
-              <p className="text-red-400">{error}</p>
+              <p className="text-red-600 dark:text-red-400">{error}</p>
             </div>
           )}
 
           <div className="flex flex-col gap-2">
             <label
               htmlFor="name"
-              className="text-zinc-300 text-sm font-semibold"
+              className="text-zinc-600 dark:text-zinc-300 text-sm font-semibold"
             >
               Name *
             </label>
@@ -201,7 +192,7 @@ export default function CreateCharacter() {
               onChange={(e) =>
                 setNewCharacter({ ...newCharacter, name: e.target.value })
               }
-              className="w-full bg-zinc-700/60 border border-zinc-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full bg-zinc-100 dark:bg-zinc-700/60 border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-zinc-900 dark:text-white"
               required
             />
           </div>
@@ -209,7 +200,7 @@ export default function CreateCharacter() {
           <div className="flex flex-col gap-2">
             <label
               htmlFor="description"
-              className="text-zinc-400 text-sm font-semibold"
+              className="text-zinc-500 dark:text-zinc-400 text-sm font-semibold"
             >
               Description
             </label>
@@ -225,13 +216,13 @@ export default function CreateCharacter() {
               }}
               maxLength={120}
               rows={3}
-              className="w-full bg-zinc-700/60 border border-zinc-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+              className="w-full bg-zinc-100 dark:bg-zinc-700/60 border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-zinc-900 dark:text-white"
             />
             <div className="flex justify-between">
-              <div className="text-sm text-zinc-400">
+              <div className="text-sm text-zinc-500 dark:text-zinc-400">
                 This will be shown on the character card.
               </div>
-              <div className="text-sm text-zinc-400 text-end">
+              <div className="text-sm text-zinc-500 dark:text-zinc-400 text-end">
                 {newCharacter.description.length}/120 characters
               </div>
             </div>
@@ -239,13 +230,13 @@ export default function CreateCharacter() {
 
           {/* Image Upload Field */}
           <div className="flex flex-col gap-2">
-            <label className="text-zinc-400 text-sm font-semibold">
+            <label className="text-zinc-500 dark:text-zinc-400 text-sm font-semibold">
               Character Image (Optional)
             </label>
 
             {imagePreview ? (
               <div className="relative w-32 h-32">
-                <div className="w-full h-full overflow-hidden rounded-lg border border-zinc-600">
+                <div className="w-full h-full overflow-hidden rounded-lg border border-zinc-300 dark:border-zinc-600">
                   <img
                     src={imagePreview}
                     alt="Character preview"
@@ -255,107 +246,56 @@ export default function CreateCharacter() {
                 <button
                   type="button"
                   onClick={removeImage}
-                  className="absolute -top-3 -right-4 cursor-pointer p-2 group/removePicture text-white transition-colors shadow-lg flex items-center justify-center"
+                  className="absolute -top-2 -right-2 cursor-pointer p-1 group/removePicture text-white transition-colors flex items-center justify-center"
                 >
-                  <div className="flex items-center justify-center w-6 h-6 bg-zinc-700 border border-zinc-600 p-1.5 group-hover/removePicture:bg-red-700 group-hover/removePicture:border-red-700 rounded-full text-white transition-colors shadow-lg">
-                    <FiX size={16} />
+                  <div className="flex items-center justify-center w-6 h-6 bg-zinc-700 border border-zinc-600 p-1 group-hover/removePicture:bg-red-700 group-hover/removePicture:border-red-700 rounded-full text-white transition-colors shadow-lg">
+                    <FiX size={14} />
                   </div>
                 </button>
               </div>
             ) : (
               <label
-                className={`w-full h-32 border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer transition-colors ${
-                  isDragging
-                    ? "border-blue-500 bg-blue-500/10"
-                    : "border-zinc-600 hover:border-zinc-500 hover:bg-zinc-800/30"
-                }`}
                 onDragOver={handleDragOver}
                 onDragEnter={handleDragEnter}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
+                className={`relative flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-lg cursor-pointer transition-colors duration-200 ${
+                  isDragging
+                    ? "border-blue-500 bg-blue-500/10"
+                    : "border-zinc-400 dark:border-zinc-600 hover:border-zinc-500 dark:hover:border-zinc-500 bg-zinc-100 dark:bg-zinc-700/50 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                }`}
               >
-                <FiUpload size={24} className="text-zinc-400 mb-2" />
-                <span className="text-zinc-400 text-sm">
-                  {isDragging
-                    ? "Drop image here"
-                    : "Click to upload or drag & drop"}
-                </span>
-                <span className="text-zinc-500 text-xs mt-1">
-                  PNG, JPG up to 5MB
-                </span>
+                <div className="flex flex-col items-center justify-center pt-5 pb-6 text-center">
+                  <FiUpload className="w-8 h-8 mb-4 text-zinc-500 dark:text-zinc-400" />
+                  <p className="mb-2 text-sm text-zinc-600 dark:text-zinc-400">
+                    <span className="font-semibold">Click to upload</span> or
+                    drag and drop
+                  </p>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    PNG, JPG, or GIF (MAX. 5MB)
+                  </p>
+                </div>
                 <input
+                  id="dropzone-file"
                   type="file"
-                  accept="image/*"
-                  onChange={handleImageChange}
                   className="hidden"
+                  onChange={handleImageChange}
+                  accept="image/*"
                 />
               </label>
-            )}
-
-            <p className="text-sm text-zinc-500">
-              Add an optional image that will be displayed on the character
-              card.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <label
-              htmlFor="model"
-              className="text-zinc-400 text-sm font-semibold"
-            >
-              AI Model
-            </label>
-            <select
-              id="model"
-              value={newCharacter.model}
-              onChange={(e) =>
-                setNewCharacter({ ...newCharacter, model: e.target.value })
-              }
-              className="w-full bg-zinc-700/60 border border-zinc-600 rounded-lg pl-3 pr-10 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-no-repeat bg-right"
-              style={{
-                backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e")`,
-                backgroundPosition: "right 0.75rem center",
-                backgroundSize: "1.5em 1.5em",
-              }}
-            >
-              {modelGroups.map((group) => (
-                <optgroup key={group.label} label={group.label}>
-                  {group.models.map((model) => (
-                    <option
-                      key={model.id}
-                      value={model.id}
-                      disabled={model.id.startsWith("pro-placeholder")}
-                    >
-                      {model.displayName}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-            {subscriptionTier === "free" && (
-              <p className="text-sm text-zinc-500">
-                Free tier includes limited models.{" "}
-                <span
-                  className="text-blue-400 cursor-pointer"
-                  onClick={() => navigate("/plans")}
-                >
-                  Upgrade to Pro
-                </span>{" "}
-                for access to the most powerful models.
-              </p>
             )}
           </div>
 
           <div className="flex flex-col gap-2">
             <label
               htmlFor="systemPrompt"
-              className="text-zinc-400 text-sm font-semibold"
+              className="text-zinc-500 dark:text-zinc-400 text-sm font-semibold"
             >
               System Prompt *
             </label>
             <textarea
               id="systemPrompt"
-              placeholder="Define your character's personality, role, and behavior..."
+              placeholder="Instructions for the AI, e.g., 'You are a helpful assistant.'"
               value={newCharacter.systemPrompt}
               onChange={(e) =>
                 setNewCharacter({
@@ -363,53 +303,88 @@ export default function CreateCharacter() {
                   systemPrompt: e.target.value,
                 })
               }
-              rows={8}
-              className="w-full bg-zinc-700/60 border border-zinc-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+              rows={6}
+              className="w-full bg-zinc-100 dark:bg-zinc-700/60 border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-zinc-900 dark:text-white"
               required
             />
-            <p className="text-sm text-zinc-500">
-              This defines how your character will behave and respond. Be
-              specific about their personality, expertise, and communication
-              style.
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <label
+              htmlFor="category"
+              className="text-zinc-500 dark:text-zinc-400 text-sm font-semibold"
+            >
+              Category
+            </label>
+            <select
+              id="category"
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="w-full bg-zinc-100 dark:bg-zinc-700/60 border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-zinc-900 dark:text-white"
+            >
+              {CHARACTER_CATEGORIES.map((category) => (
+                <option
+                  key={category.id}
+                  value={category.id}
+                  className="font-normal bg-white dark:bg-zinc-700"
+                >
+                  {category.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              {CHARACTER_CATEGORIES.find((c) => c.id === selectedCategory)?.description}
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={newCharacter.isPublic}
-                onChange={(e) =>
-                  setNewCharacter({
-                    ...newCharacter,
-                    isPublic: e.target.checked,
-                  })
-                }
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-zinc-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+          {/* Visibility Control */}
+          <div className="flex flex-col gap-2">
+            <label className="text-zinc-500 dark:text-zinc-400 text-sm font-semibold">
+              Visibility
             </label>
-            <div className="flex flex-col">
-              <span className="text-zinc-300 font-medium">Make Public</span>
-              <span className="text-sm text-zinc-500">
-                Allow other users to discover and chat with this character
-              </span>
-            </div>
+            <SegmentedControl
+              options={[
+                {
+                  value: "private",
+                  label: "Private",
+                  icon: <FiLock size={14} />,
+                },
+                {
+                  value: "public",
+                  label: "Public",
+                  icon: <FiGlobe size={14} />,
+                },
+              ]}
+              value={newCharacter.isPublic ? "public" : "private"}
+              onChange={(value) =>
+                setNewCharacter({
+                  ...newCharacter,
+                  isPublic: value === "public",
+                })
+              }
+              fullWidth
+            />
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              {newCharacter.isPublic
+                ? "Anyone can discover and chat with this character"
+                : "Only you can access this character"}
+            </p>
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-4 pt-6">
+          <div className="flex justify-end gap-3 pt-4">
             <button
               type="button"
               onClick={() => navigate("/dashboard")}
-              className="flex-1 cursor-pointer px-6 py-3 rounded-lg text-zinc-100 border border-zinc-600 hover:bg-zinc-900 hover:border-zinc-900 hover:text-white transition-colors duration-300 ease-in-out font-medium"
+              className="px-5 py-2.5 text-sm font-medium text-zinc-700 dark:text-gray-300 bg-transparent rounded-lg border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              disabled={isLoading}
             >
               Cancel
             </button>
             <button
               type="submit"
+              className="px-5 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-400 disabled:cursor-not-allowed"
               disabled={isLoading}
-              className="flex-1 cursor-pointer px-6 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed transition-colors duration-200 ease-in-out font-medium"
             >
               {isLoading ? "Creating..." : "Create Character"}
             </button>

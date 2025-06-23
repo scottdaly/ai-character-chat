@@ -83,34 +83,34 @@ const generateGradient = (characterId: string): string => {
 // Skeleton loader component for character cards
 export function CharacterCardSkeleton() {
   return (
-    <div className="flex flex-col justify-between rounded-lg p-4 border transition-colors h-[500px] bg-zinc-700/50 border-zinc-600/50 animate-pulse">
+    <div className="flex flex-col justify-between rounded-lg p-4 border transition-colors h-[500px] bg-white dark:bg-zinc-800/50 border-zinc-200 dark:border-zinc-700/50 animate-pulse">
       {/* Image skeleton - always show now for consistency */}
-      <div className="w-full aspect-square mb-3 bg-zinc-600 rounded-lg"></div>
+      <div className="w-full aspect-square mb-3 bg-zinc-200 dark:bg-zinc-700 rounded-lg"></div>
 
       <div className="flex flex-col flex-grow">
         <div className="flex justify-between items-start mb-2">
           {/* Title skeleton */}
-          <div className="h-6 bg-zinc-600 rounded w-3/4"></div>
+          <div className="h-6 bg-zinc-200 dark:bg-zinc-700 rounded w-3/4"></div>
           {/* Model badge skeleton */}
-          <div className="h-6 bg-zinc-600 rounded w-16"></div>
+          <div className="h-6 bg-zinc-200 dark:bg-zinc-700 rounded w-16"></div>
         </div>
 
         {/* Description skeleton */}
         <div className="space-y-2 flex-grow">
-          <div className="h-4 bg-zinc-600 rounded w-full"></div>
-          <div className="h-4 bg-zinc-600 rounded w-5/6"></div>
-          <div className="h-4 bg-zinc-600 rounded w-4/6"></div>
+          <div className="h-4 bg-zinc-200 dark:bg-zinc-700 rounded w-full"></div>
+          <div className="h-4 bg-zinc-200 dark:bg-zinc-700 rounded w-5/6"></div>
+          <div className="h-4 bg-zinc-200 dark:bg-zinc-700 rounded w-4/6"></div>
         </div>
       </div>
 
       <div className="flex items-center justify-between mt-2">
         <div className="text-sm">
           {/* Author skeleton */}
-          <div className="h-4 bg-zinc-600 rounded w-20"></div>
+          <div className="h-4 bg-zinc-200 dark:bg-zinc-700 rounded w-20"></div>
         </div>
         <div className="flex items-center justify-between text-sm">
           {/* Status indicators skeleton */}
-          <div className="h-4 bg-zinc-600 rounded w-12"></div>
+          <div className="h-4 bg-zinc-200 dark:bg-zinc-700 rounded w-12"></div>
         </div>
       </div>
     </div>
@@ -234,9 +234,13 @@ export default function CharacterCard({
       </div>
 
       <div className="flex flex-col flex-grow">
-        <h3 className={`text-xl font-semibold`}>{character.name}</h3>
+        <h3 className={`text-xl font-semibold text-zinc-800 dark:text-white`}>
+          {character.name}
+        </h3>
 
-        <p className={`text-sm line-clamp-3 text-zinc-300 flex-grow`}>
+        <p
+          className={`text-sm line-clamp-3 text-zinc-600 dark:text-zinc-300 flex-grow`}
+        >
           {character.description}
         </p>
       </div>
@@ -245,61 +249,56 @@ export default function CharacterCard({
         <div className="text-sm">
           {character.User?.isOfficial ? (
             <span className={`flex items-center gap-1 `}>
-              <span className={`text-zinc-400 font-medium`}>Nevermade</span>
+              <span className={`text-zinc-600 dark:text-zinc-400 font-medium`}>
+                Nevermade
+              </span>
               <span
                 className={`inline-block px-1.5 py-0.5 text-xs rounded-full ${
-                  isLocked && isFreeTier
-                    ? "bg-zinc-700 text-zinc-300"
-                    : "bg-blue-600 text-blue-100 "
+                  !isFreeTier
+                    ? "bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300"
+                    : "bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300"
                 }`}
               >
                 Official
               </span>
             </span>
           ) : (
-            <span className={`text-gray-400`}>
-              by @{character.User?.username || "unknown"}
+            <span className={`text-zinc-500 dark:text-zinc-400`}>
+              @{character.User?.username || "Community"}
             </span>
           )}
         </div>
-        <div
-          className={`flex items-center justify-between text-sm text-gray-500`}
-        >
-          <div className="flex items-center gap-2">
-            <span
-              className={`px-2 py-1 rounded text-sm bg-zinc-700 text-zinc-200`}
-            >
-              {getModelAlias(character.model)}
-            </span>
-            {isLocked && isFreeTier && (
-              <span className="flex items-center gap-1  text-red-400 px-2 py-1 rounded-md text-sm">
-                <FiLock size={14} /> Locked
-              </span>
-            )}
+        <div className="flex items-center justify-between text-sm">
+          <div
+            className={`flex items-center gap-1.5 ${
+              isLocked
+                ? "text-amber-600 dark:text-amber-500"
+                : "text-zinc-500 dark:text-zinc-400"
+            }`}
+          >
+            {showPublicStatus &&
+              (character.isPublic ? (
+                <FiGlobe className="h-4 w-4" title="This character is public" />
+              ) : (
+                <FiLock className="h-4 w-4" title="This character is private" />
+              ))}
+            {isLocked && <FiLock className="h-4 w-4" title="Locked" />}
           </div>
-          {showPublicStatus &&
-            !isLocked &&
-            (character.isPublic ? (
-              <span className="flex items-center gap-1 text-gray-400">
-                <FiGlobe size={14} />
-                Public
-              </span>
-            ) : (
-              <span className="flex items-center gap-1 text-gray-400">
-                <FiLock size={14} />
-                Private
-              </span>
-            ))}
         </div>
       </div>
     </div>
   );
 
   // All cards now have consistent height since they all have an image section
-  const commonClassName = `flex flex-col justify-between rounded-lg p-4 border transition-colors h-[500px] bg-zinc-700/50 border-zinc-600/50 cursor-pointer group/characterCard`;
+  const commonClassName = `group/characterCard flex flex-col justify-between rounded-lg p-4 border transition-colors h-[500px] ${
+    isLocked
+      ? "bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800/60"
+      : "bg-white dark:bg-zinc-800/50 border-zinc-200 dark:border-zinc-700/50 hover:border-zinc-300 dark:hover:border-zinc-600"
+  } cursor-pointer`;
 
   return (
-    <div
+    <a
+      href={`/dashboard/characters/${character.id}`}
       onClick={handleCardClick}
       className={commonClassName}
       title={
@@ -309,6 +308,6 @@ export default function CharacterCard({
       }
     >
       {cardContent}
-    </div>
+    </a>
   );
 }

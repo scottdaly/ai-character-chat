@@ -1,10 +1,35 @@
 // src/api/messages.ts
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import { useCredit } from "../contexts/CreditContext";
 import { Message, MessageAttachment, ConversationTree } from "../types";
 import { useConversations } from "./conversations";
 import { UserConversationWithCharacter } from "./useUserConversations";
 import { checkCharacterAccess } from "./characterAccess";
+
+export interface MessageResponse {
+  messages: Message[];
+  conversation?: {
+    id: string;
+    title: string;
+    lastMessage: string;
+    updatedAt: string;
+  };
+  creditsUsed?: number;
+  tokenUsage?: {
+    inputTokens: number;
+    outputTokens: number;
+  };
+  processingTime?: number;
+}
+
+interface CreditError {
+  error: string;
+  creditsNeeded?: number;
+  currentBalance?: number;
+  estimatedCost?: number;
+  subscriptionTier?: string;
+}
 
 export const useMessages = (
   characterId: string,
@@ -15,18 +40,33 @@ export const useMessages = (
   onConversationUpdate?: () => void,
   onConversationDataUpdate?: (conversationData: any) => void
 ) => {
-  const { apiFetch, user } = useAuth();
+  const { apiFetch, user, subscriptionTier } = useAuth();
+  const {
+    checkSufficientCredits,
+    recordCreditUsage,
+    hasEnoughCredits,
+    error: creditError,
+    clearError: clearCreditError,
+  } = useCredit();
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversationTree, setConversationTree] =
     useState<ConversationTree | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const { createConversation } = useConversations(characterId);
   const [realConversationId, setRealConversationId] = useState<string | null>(
     null
   );
   const [isAccessDenied, setIsAccessDenied] = useState(false);
   const [accessError, setAccessError] = useState<Error | null>(null);
+
+  // Credit-related state
+  const [lastCreditUsage, setLastCreditUsage] = useState<{
+    creditsUsed: number;
+    tokenUsage?: { inputTokens: number; outputTokens: number };
+  } | null>(null);
+  const [isCheckingCredits, setIsCheckingCredits] = useState(false);
 
   // Validation Effect
   useEffect(() => {
@@ -94,7 +134,7 @@ export const useMessages = (
         }
       } catch (err) {
         setError(
-          err instanceof Error ? err : new Error("Failed to load messages")
+          err instanceof Error ? err.message : "Failed to load messages"
         );
       }
     },
@@ -123,6 +163,30 @@ export const useMessages = (
     return loadMessages(conversationId);
   }, [conversationId, loadMessages, isLoading]);
 
+  // Estimate credit cost for a message
+  const estimateMessageCost = useCallback(
+    (content: string, attachments?: MessageAttachment[]) => {
+      // Simple estimation: ~4 chars per token, plus attachment overhead
+      const contentTokens = Math.ceil(content.length / 4);
+      const attachmentTokens = attachments ? attachments.length * 1000 : 0; // 1000 tokens per image
+      const estimatedInputTokens = contentTokens + attachmentTokens;
+      const estimatedOutputTokens = Math.min(estimatedInputTokens * 0.5, 1000); // Conservative estimate
+
+      // Rough cost estimation (this should match backend logic)
+      // Using average pricing across models: ~$0.001 per 1000 tokens
+      const estimatedCostUsd =
+        ((estimatedInputTokens + estimatedOutputTokens) / 1000) * 0.001;
+      const estimatedCredits = estimatedCostUsd / 0.001; // Convert to credits (1 credit = $0.001)
+
+      return {
+        estimatedCredits: Math.ceil(estimatedCredits * 1.2), // Add 20% buffer
+        estimatedInputTokens,
+        estimatedOutputTokens,
+      };
+    },
+    []
+  );
+
   const sendMessage = async (
     content: string,
     attachments?: MessageAttachment[]
@@ -132,6 +196,38 @@ export const useMessages = (
         accessError || new Error("Access Denied: Upgrade to send messages.")
       );
     }
+
+    // Credit system integration - pre-flight check
+    const costEstimate = estimateMessageCost(content, attachments);
+
+    try {
+      setIsCheckingCredits(true);
+      clearCreditError();
+
+      // Check if user has sufficient credits
+      const hasSufficientCredits = await checkSufficientCredits(
+        costEstimate.estimatedCredits
+      );
+      if (!hasSufficientCredits) {
+        const creditError: CreditError = {
+          error: "Insufficient credits",
+          creditsNeeded: costEstimate.estimatedCredits,
+          estimatedCost: costEstimate.estimatedCredits,
+        };
+        throw creditError;
+      }
+    } catch (err) {
+      // Re-throw credit errors with additional context
+      if (typeof err === "object" && err !== null && "error" in err) {
+        const creditError = err as CreditError;
+        creditError.estimatedCost = costEstimate.estimatedCredits;
+        throw creditError;
+      }
+      throw err;
+    } finally {
+      setIsCheckingCredits(false);
+    }
+
     try {
       setIsLoading(true);
       setError(null);
@@ -156,12 +252,22 @@ export const useMessages = (
         const newConversation = await createConversation();
         setRealConversationId(newConversation.id);
 
-        const data = await apiFetch<
-          Message[] | { messages: Message[]; conversation?: any }
-        >(`/api/conversations/${newConversation.id}/messages`, {
-          method: "POST",
-          body: JSON.stringify({ content, attachments }),
-        });
+        const data = await apiFetch<MessageResponse>(
+          `/api/conversations/${newConversation.id}/messages`,
+          {
+            method: "POST",
+            body: JSON.stringify({ content, attachments }),
+          }
+        );
+
+        // Handle response and credit tracking
+        if (data.creditsUsed) {
+          recordCreditUsage(data.creditsUsed);
+          setLastCreditUsage({
+            creditsUsed: data.creditsUsed,
+            tokenUsage: data.tokenUsage,
+          });
+        }
 
         // Handle both array response (legacy) and new object response
         if (Array.isArray(data)) {
@@ -197,12 +303,22 @@ export const useMessages = (
       // Show user message immediately
       setMessages((prevMessages) => [...prevMessages, userMessage]);
 
-      const data = await apiFetch<
-        Message[] | { messages: Message[]; conversation?: any }
-      >(`/api/conversations/${conversationId}/messages`, {
-        method: "POST",
-        body: JSON.stringify({ content, attachments }),
-      });
+      const data = await apiFetch<MessageResponse>(
+        `/api/conversations/${conversationId}/messages`,
+        {
+          method: "POST",
+          body: JSON.stringify({ content, attachments }),
+        }
+      );
+
+      // Handle credit tracking
+      if (data.creditsUsed) {
+        recordCreditUsage(data.creditsUsed);
+        setLastCreditUsage({
+          creditsUsed: data.creditsUsed,
+          tokenUsage: data.tokenUsage,
+        });
+      }
 
       // Handle both array response (legacy) and new object response
       if (Array.isArray(data)) {
@@ -239,19 +355,43 @@ export const useMessages = (
         await loadMessages(conversationId);
       }
 
-      // Also notify for existing conversations in case title was updated
-      if (onConversationUpdate) {
-        setTimeout(() => {
-          onConversationUpdate();
-        }, 100); // Reduced delay since we now have immediate updates
-      }
-
       return data;
     } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Failed to send message";
-      setError(new Error(errorMessage));
-      throw err;
+      console.error("Message error:", err);
+
+      // Handle credit-specific errors
+      if (typeof err === "object" && err !== null && "error" in err) {
+        const creditError = err as CreditError;
+        if (creditError.error === "Insufficient credits") {
+          // This will be handled by the calling component
+          throw creditError;
+        }
+      }
+
+      // Handle other API errors
+      if (err instanceof Error) {
+        if (err.message.includes("402")) {
+          // Parse credit error from API response
+          try {
+            const errorData = JSON.parse(err.message.split("402: ")[1] || "{}");
+            throw {
+              error: "Insufficient credits",
+              creditsNeeded: errorData.creditsNeeded,
+              currentBalance: errorData.currentBalance,
+              estimatedCost: errorData.estimatedCost,
+              subscriptionTier: errorData.subscriptionTier,
+            } as CreditError;
+          } catch {
+            throw {
+              error: "Insufficient credits",
+              estimatedCost: costEstimate.estimatedCredits,
+            } as CreditError;
+          }
+        }
+        throw new Error(err.message || "Failed to send message");
+      }
+
+      throw new Error("Failed to send message");
     } finally {
       setIsLoading(false);
     }
@@ -272,9 +412,7 @@ export const useMessages = (
 
       return data;
     } catch (err) {
-      setError(
-        err instanceof Error ? err : new Error("Failed to switch branch")
-      );
+      setError(err instanceof Error ? err.message : "Failed to switch branch");
       throw err;
     } finally {
       setIsLoading(false);
@@ -289,7 +427,7 @@ export const useMessages = (
     []
   );
 
-  // Streaming message function using Server-Sent Events
+  // Streaming message function using Server-Sent Events with credit integration
   const sendMessageStream = async (
     content: string,
     attachments?: MessageAttachment[]
@@ -298,6 +436,37 @@ export const useMessages = (
       throw (
         accessError || new Error("Access Denied: Upgrade to send messages.")
       );
+    }
+
+    // Credit system integration - pre-flight check
+    const costEstimate = estimateMessageCost(content, attachments);
+
+    try {
+      setIsCheckingCredits(true);
+      clearCreditError();
+
+      // Check if user has sufficient credits
+      const hasSufficientCredits = await checkSufficientCredits(
+        costEstimate.estimatedCredits
+      );
+      if (!hasSufficientCredits) {
+        const creditError: CreditError = {
+          error: "Insufficient credits",
+          creditsNeeded: costEstimate.estimatedCredits,
+          estimatedCost: costEstimate.estimatedCredits,
+        };
+        throw creditError;
+      }
+    } catch (err) {
+      // Re-throw credit errors with additional context
+      if (typeof err === "object" && err !== null && "error" in err) {
+        const creditError = err as CreditError;
+        creditError.estimatedCost = costEstimate.estimatedCredits;
+        throw creditError;
+      }
+      throw err;
+    } finally {
+      setIsCheckingCredits(false);
     }
 
     try {
@@ -371,6 +540,20 @@ export const useMessages = (
         })
           .then(async (response) => {
             if (!response.ok) {
+              // Handle credit errors from streaming endpoint
+              if (response.status === 402) {
+                const errorData = await response.json().catch(() => ({}));
+                const creditError: CreditError = {
+                  error: "Insufficient credits",
+                  creditsNeeded: errorData.creditsNeeded,
+                  currentBalance: errorData.currentBalance,
+                  estimatedCost:
+                    errorData.estimatedCost || costEstimate.estimatedCredits,
+                  subscriptionTier: errorData.subscriptionTier,
+                };
+                throw creditError;
+              }
+
               throw new Error(
                 `HTTP ${response.status}: ${response.statusText}`
               );
@@ -385,131 +568,154 @@ export const useMessages = (
             let streamingContent = "";
             let finalMessage: Message | null = null;
             let conversationUpdate: any = null;
+            let creditUsageInfo: {
+              creditsUsed: number;
+              tokenUsage?: any;
+            } | null = null;
             let updateTimeoutRef: NodeJS.Timeout | null = null;
 
-            try {
-              while (true) {
-                const { done, value } = await reader.read();
+            // Stream processing function
+            const processStream = async () => {
+              try {
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
 
-                if (done) break;
+                  const chunk = decoder.decode(value, { stream: true });
+                  const lines = chunk.split("\n");
 
-                const chunk = decoder.decode(value, { stream: true });
-                const lines = chunk.split("\n");
+                  for (const line of lines) {
+                    if (line.startsWith("data: ")) {
+                      try {
+                        const data = JSON.parse(line.slice(6));
 
-                for (const line of lines) {
-                  if (line.startsWith("data: ")) {
-                    const data = line.slice(6);
-                    if (data.trim() === "") continue;
+                        if (data.type === "delta" && data.content) {
+                          streamingContent += data.content;
 
-                    try {
-                      const eventData = JSON.parse(data);
-
-                      switch (eventData.type) {
-                        case "userMessage":
-                          // Replace temp user message with real one
-                          setMessages((prevMessages) => {
-                            return prevMessages.map((msg) =>
-                              msg.id === tempUserMessage.id
-                                ? { ...eventData.message }
-                                : msg
-                            );
-                          });
-                          break;
-
-                        case "delta":
-                          // Append content to streaming message with debounced updates
-                          streamingContent += eventData.content;
-
-                          // Use a debounced update for smoother performance
+                          // Debounced UI update for better performance
                           if (updateTimeoutRef) {
                             clearTimeout(updateTimeoutRef);
                           }
 
-                          // Update more frequently for better responsiveness, but still batched
                           updateTimeoutRef = setTimeout(() => {
                             setMessages((prevMessages) => {
-                              return prevMessages.map((msg) =>
-                                msg.id === tempAssistantMessage.id
-                                  ? { ...msg, content: streamingContent }
-                                  : msg
+                              const updatedMessages = [...prevMessages];
+                              const assistantIndex = updatedMessages.findIndex(
+                                (msg) => msg.id === tempAssistantMessage.id
                               );
+
+                              if (assistantIndex !== -1) {
+                                updatedMessages[assistantIndex] = {
+                                  ...updatedMessages[assistantIndex],
+                                  content: streamingContent,
+                                };
+                              }
+
+                              return updatedMessages;
                             });
-                          }, 30); // Update every 30ms for smoother but still efficient updates
-                          break;
-
-                        case "complete":
-                          // Clear any pending debounced update
-                          if (updateTimeoutRef) {
-                            clearTimeout(updateTimeoutRef);
-                          }
-
-                          // Replace temp assistant message with final one
-                          finalMessage = eventData.message;
-                          conversationUpdate = eventData.conversation;
-
-                          setMessages((prevMessages) => {
-                            return prevMessages.map((msg) =>
-                              msg.id === tempAssistantMessage.id
-                                ? { ...eventData.message }
-                                : msg
-                            );
-                          });
-                          break;
-
-                        case "conversationUpdate":
-                          // Handle conversation title updates
-                          conversationUpdate = eventData.conversation;
-                          if (onConversationDataUpdate) {
-                            onConversationDataUpdate(eventData.conversation);
-                          }
-                          break;
-
-                        case "error":
-                          throw new Error(eventData.error);
+                          }, 50); // 50ms debounce
+                        } else if (data.type === "complete") {
+                          // Final message received
+                          finalMessage = data.message;
+                          conversationUpdate = data.conversation;
+                        } else if (data.type === "creditUsage") {
+                          // Credit usage information
+                          creditUsageInfo = {
+                            creditsUsed: data.creditsUsed,
+                            tokenUsage: data.tokenUsage,
+                          };
+                        } else if (data.type === "error") {
+                          throw new Error(data.error);
+                        }
+                      } catch (parseError) {
+                        console.warn("Failed to parse SSE data:", parseError);
                       }
-                    } catch (parseError) {
-                      console.error("Failed to parse SSE data:", parseError);
                     }
                   }
                 }
-              }
 
-              // Trigger conversation list updates
-              if (conversationUpdate) {
-                if (onConversationDataUpdate) {
-                  onConversationDataUpdate(conversationUpdate);
-                } else if (onConversationUpdate) {
-                  setTimeout(onConversationUpdate, 100);
+                // Process credit usage
+                if (creditUsageInfo) {
+                  recordCreditUsage(creditUsageInfo.creditsUsed);
+                  setLastCreditUsage(creditUsageInfo);
+                }
+
+                // Final UI update
+                if (finalMessage) {
+                  setMessages((prevMessages) => {
+                    const updatedMessages = prevMessages.filter(
+                      (msg) =>
+                        msg.id !== tempUserMessage.id &&
+                        msg.id !== tempAssistantMessage.id
+                    );
+
+                    // Add the real messages from the server
+                    return [
+                      ...updatedMessages,
+                      tempUserMessage,
+                      finalMessage as Message,
+                    ];
+                  });
+
+                  // Update conversation if we have data
+                  if (conversationUpdate) {
+                    if (onConversationDataUpdate) {
+                      onConversationDataUpdate(conversationUpdate);
+                    } else if (onConversationUpdate) {
+                      onConversationUpdate();
+                    }
+                  }
+                }
+
+                resolve({ success: true, creditUsage: creditUsageInfo });
+              } catch (streamError) {
+                console.error("Stream processing error:", streamError);
+
+                // Remove temporary messages on error
+                setMessages((prevMessages) =>
+                  prevMessages.filter(
+                    (msg) =>
+                      msg.id !== tempUserMessage.id &&
+                      msg.id !== tempAssistantMessage.id
+                  )
+                );
+
+                reject(streamError);
+              } finally {
+                if (updateTimeoutRef) {
+                  clearTimeout(updateTimeoutRef);
                 }
               }
+            };
 
-              resolve({
-                messages: finalMessage ? [finalMessage] : [],
-                conversation: conversationUpdate,
-              });
-            } catch (streamError) {
-              reader.releaseLock();
-              throw streamError;
-            }
+            await processStream();
           })
-          .catch((error) => {
-            console.error("💥 [STREAM] Stream error occurred:", error);
+          .catch((fetchError) => {
+            console.error("Fetch error:", fetchError);
+
             // Remove temporary messages on error
-            setMessages((prevMessages) => {
-              return prevMessages.filter(
+            setMessages((prevMessages) =>
+              prevMessages.filter(
                 (msg) =>
                   msg.id !== tempUserMessage.id &&
                   msg.id !== tempAssistantMessage.id
-              );
-            });
+              )
+            );
 
-            reject(error);
+            reject(fetchError);
           });
       });
     } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Failed to send message";
-      setError(new Error(errorMessage));
+      console.error("Stream setup error:", err);
+
+      // Handle credit-specific errors
+      if (typeof err === "object" && err !== null && "error" in err) {
+        const creditError = err as CreditError;
+        if (creditError.error === "Insufficient credits") {
+          throw creditError;
+        }
+      }
+
       throw err;
     } finally {
       setIsLoading(false);
@@ -530,5 +736,9 @@ export const useMessages = (
     updateMessages,
     isAccessDenied,
     accessError,
+    // Credit-related exports
+    lastCreditUsage,
+    isCheckingCredits,
+    estimateMessageCost,
   };
 };

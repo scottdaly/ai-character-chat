@@ -2,9 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { FiUpload, FiX, FiEdit2, FiLoader, FiTrash2 } from "react-icons/fi";
 import Navbar from "./Navbar";
-import RemoveProfilePictureModal from "./RemoveProfilePictureModal";
-import ConfirmUsernameChangeModal from "./ConfirmUsernameChangeModal";
-import DeleteAccountModal from "./DeleteAccountModal";
+import UniversalModal from "./UniversalModal";
 import Toast from "./Toast";
 
 export default function AccountSettings() {
@@ -39,6 +37,7 @@ export default function AccountSettings() {
   } | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
   const [uploadError, setUploadError] = useState<string | null>(null);
   const usernameInputRef = useRef<HTMLInputElement>(null);
   const checkTimeoutRef = useRef<NodeJS.Timeout>();
@@ -438,7 +437,7 @@ export default function AccountSettings() {
           <h1 className="text-3xl font-bold mb-8">Account Settings</h1>
 
           {/* Profile Picture Section */}
-          <div className="bg-zinc-700/60 border border-zinc-600 rounded-lg p-6 mb-6">
+          <div className="bg-transparent dark:bg-zinc-700/60 border border-zinc-200 dark:border-zinc-600 rounded-lg p-6 mb-6">
             <h2 className="text-xl font-semibold mb-4">Profile Picture</h2>
 
             <div className="flex items-center gap-6">
@@ -487,12 +486,12 @@ export default function AccountSettings() {
                 <button
                   onClick={handleUploadClick}
                   disabled={isLoading}
-                  className="flex items-center cursor-pointer gap-2 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-black rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center cursor-pointer gap-2 px-4 py-2 bg-zinc-200/80 hover:bg-zinc-300 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-black font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <FiUpload />
                   {isLoading ? "Uploading..." : "Upload New Picture"}
                 </button>
-                <p className="text-sm text-zinc-300 mt-2">
+                <p className="text-sm text-zinc-600 dark:text-zinc-300 mt-2">
                   Max file size: 5MB. Supported formats: JPG, PNG, GIF
                 </p>
                 {uploadError && (
@@ -503,11 +502,11 @@ export default function AccountSettings() {
           </div>
 
           {/* Account Information */}
-          <div className="bg-zinc-700/60 border border-zinc-600 rounded-lg p-6 mb-6">
-            <h2 className="text-xl font-semibold mb-4">Account Information</h2>
+          <div className="bg-transparent dark:bg-zinc-700/60 border border-zinc-200 dark:border-zinc-600 rounded-lg p-6 mb-6">
+            <p className="text-xl font-semibold mb-4">Account Information</p>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-400 mb-1">
+                <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">
                   Username
                 </label>
                 {isEditingUsername ? (
@@ -518,7 +517,7 @@ export default function AccountSettings() {
                         type="text"
                         value={newUsername}
                         onChange={handleUsernameChange}
-                        className={`flex-1 bg-zinc-700 text-white px-3 py-2 rounded-lg focus:outline-none focus:ring-2 ${
+                        className={`flex-1 border border-zinc-400 dark:border-zinc-600 text-black dark:text-white px-3 py-2 rounded-lg focus:outline-none focus:ring-2 ${
                           usernameStatus?.available
                             ? "focus:ring-zinc-300"
                             : usernameStatus?.available === false
@@ -531,20 +530,20 @@ export default function AccountSettings() {
                       <button
                         onClick={handleUsernameSave}
                         disabled={isLoading || !usernameStatus?.available}
-                        className="px-3 py-2 bg-white text-black rounded-lg disabled:opacity-50"
+                        className="px-3 py-2 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-lg disabled:opacity-50"
                       >
                         Save
                       </button>
                       <button
                         onClick={handleUsernameCancel}
                         disabled={isLoading}
-                        className="px-3 py-2 h-full bg-zinc-700 text-white rounded-lg disabled:opacity-50"
+                        className="px-3 py-2 h-full bg-zinc-200 dark:bg-zinc-700 text-black dark:text-zinc-100 rounded-lg disabled:opacity-50"
                       >
                         Cancel
                       </button>
                     </div>
                     {isCheckingUsername ? (
-                      <div className="flex items-center gap-2 text-sm text-gray-400">
+                      <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                         <FiLoader className="w-4 h-4 animate-spin" />
                         Checking availability...
                       </div>
@@ -553,8 +552,8 @@ export default function AccountSettings() {
                         <div
                           className={`text-sm ${
                             usernameStatus.available
-                              ? "text-green-500"
-                              : "text-red-500"
+                              ? "text-green-600 dark:text-green-500"
+                              : "text-red-600 dark:text-red-500"
                           }`}
                         >
                           {usernameStatus.available
@@ -569,7 +568,7 @@ export default function AccountSettings() {
                     <p className="text-lg">@{user?.username}</p>
                     <button
                       onClick={handleUsernameEdit}
-                      className="p-1 text-gray-400 hover:text-white"
+                      className="p-1 text-gray-500 dark:text-gray-400 hover:text-white"
                     >
                       <FiEdit2 className="w-4 h-4" />
                     </button>
@@ -577,7 +576,7 @@ export default function AccountSettings() {
                 )}
               </div>
               <div>
-                <label className="block text-sm text-gray-400 mb-1">
+                <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">
                   Email
                 </label>
                 <p className="text-lg">{user?.email}</p>
@@ -586,11 +585,11 @@ export default function AccountSettings() {
           </div>
 
           {/* Danger Zone */}
-          <div className="bg-zinc-700/60 border border-zinc-600 rounded-lg p-6 mb-6">
+          <div className="bg-transparent dark:bg-zinc-700/60 border border-zinc-200 dark:border-zinc-600 rounded-lg p-6 mb-6">
             <div className="space-y-4">
               <div className="flex flex-col">
                 <h3 className="text-xl font-semibold">Delete Account</h3>
-                <p className="text-sm text-zinc-300">
+                <p className="text-sm text-zinc-600 dark:text-zinc-300">
                   Remove your account and all associated data. This action is
                   irreversible.
                 </p>
@@ -598,7 +597,7 @@ export default function AccountSettings() {
               <button
                 onClick={() => setIsDeleteModalOpen(true)}
                 disabled={isLoading || isDeletingAccount}
-                className="flex items-center cursor-pointer gap-2 px-4 py-2 border border-red-300/60 text-red-300 hover:bg-red-800 hover:border-red-800 hover:text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                className="flex items-center cursor-pointer gap-2 px-4 py-2 border border-red-600 dark:border-red-300/60 text-red-700 dark:text-red-300 hover:bg-red-800 hover:border-red-800 hover:text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
               >
                 <FiTrash2 className="w-4 h-4" />
                 Delete Account
@@ -608,26 +607,114 @@ export default function AccountSettings() {
         </div>
       </div>
 
-      <RemoveProfilePictureModal
+      <UniversalModal
         isOpen={isRemoveModalOpen}
         onClose={() => setIsRemoveModalOpen(false)}
-        onConfirm={removeProfilePicture}
-      />
+        title="Remove Profile Picture"
+        buttons={[
+          {
+            text: "Cancel",
+            onClick: () => setIsRemoveModalOpen(false),
+            variant: "secondary",
+          },
+          {
+            text: "Remove Picture",
+            onClick: removeProfilePicture,
+            variant: "danger",
+          },
+        ]}
+      >
+        <p className="text-gray-600 dark:text-gray-300">
+          Are you sure you want to remove your profile picture? This action
+          cannot be undone.
+        </p>
+      </UniversalModal>
 
-      <ConfirmUsernameChangeModal
+      <UniversalModal
         isOpen={isConfirmModalOpen}
         onClose={() => setIsConfirmModalOpen(false)}
-        onConfirm={handleUsernameConfirm}
-        newUsername={newUsername.trim()}
-        currentUsername={user?.username || ""}
-      />
+        title="Change Username"
+        buttons={[
+          {
+            text: "Cancel",
+            onClick: () => setIsConfirmModalOpen(false),
+            variant: "secondary",
+          },
+          {
+            text: "Confirm Change",
+            onClick: handleUsernameConfirm,
+            variant: "primary",
+          },
+        ]}
+      >
+        <div className="space-y-4">
+          <p className="text-gray-700 dark:text-gray-300">
+            Are you sure you want to change your username from{" "}
+            <span className="font-medium">@{user?.username}</span> to{" "}
+            <span className="font-medium">@{newUsername.trim()}</span>?
+          </p>
 
-      <DeleteAccountModal
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            This change will be visible to other users and will affect how they
+            can mention you.
+          </p>
+        </div>
+      </UniversalModal>
+
+      <UniversalModal
         isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
-        onConfirm={handleDeleteAccount}
-        isLoading={isDeletingAccount}
-      />
+        onClose={() => {
+          setIsDeleteModalOpen(false);
+          setConfirmText("");
+        }}
+        title="Delete Account"
+        icon="warning"
+        size="md"
+        buttons={[
+          {
+            text: "Cancel",
+            onClick: () => {
+              setIsDeleteModalOpen(false);
+              setConfirmText("");
+            },
+            variant: "secondary",
+          },
+          {
+            text: isDeletingAccount ? "Deleting..." : "Delete Account",
+            onClick: handleDeleteAccount,
+            variant: "danger",
+            disabled: confirmText.toLowerCase() !== "delete",
+            isLoading: isDeletingAccount,
+          },
+        ]}
+      >
+        <div>
+          <p className="text-gray-600 dark:text-gray-300 mb-4">
+            This action cannot be undone. This will permanently delete your
+            account and remove all of your data from our servers.
+          </p>
+          <p className="text-gray-600 dark:text-gray-300 mb-2">
+            This includes:
+          </p>
+          <ul className="text-gray-500 dark:text-gray-400 text-sm mb-4 space-y-1 ml-4">
+            <li>• All your conversations and messages</li>
+            <li>• All characters you've created</li>
+            <li>• Your profile information</li>
+            <li>• Your subscription (if any)</li>
+          </ul>
+          <p className="text-red-600 dark:text-red-400 font-medium mb-4">
+            To confirm, please type "delete" in the box below:
+          </p>
+          <input
+            type="text"
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            placeholder="Type 'delete' to confirm"
+            disabled={isDeletingAccount}
+            className="w-full bg-zinc-100 border border-zinc-200 dark:border-zinc-600 dark:bg-zinc-700 text-black dark:text-white px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
+          />
+        </div>
+      </UniversalModal>
 
       {toast && (
         <Toast

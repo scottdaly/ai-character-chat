@@ -1,10 +1,13 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { FiPlus } from "react-icons/fi";
+import { FiPlus, FiDollarSign, FiActivity } from "react-icons/fi";
 import { useAuth } from "../contexts/AuthContext";
 import { useData } from "../contexts/DataContext";
+import { useCredit } from "../contexts/CreditContext";
 import CharacterCard, { CharacterCardSkeleton } from "./CharacterCard";
 import Navbar from "./Navbar";
+// CreditBalance only imported when needed for debug mode
+import CreditBalance from "./CreditBalance";
 import { useUserConversations } from "../api/useUserConversations";
 import { checkCharacterAccess } from "../api/characterAccess";
 
@@ -12,6 +15,10 @@ export default function Dashboard() {
   const { user, subscriptionTier, isLoadingSubscription } = useAuth();
   const navigate = useNavigate();
   const { userCharacters, loadUserCharacters } = useData();
+  const { usageStats, formatCredits } = useCredit();
+
+  // Debug flag to show detailed credit analytics
+  const showDebugStats = false; // Set to true to show credit usage statistics
   const {
     conversations: userConversations,
     isLoading: isLoadingConversations,
@@ -149,7 +156,7 @@ export default function Dashboard() {
   });
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-y-auto dark-scrollbar scrollable-container">
+    <div className="flex-1 flex flex-col h-full overflow-y-auto dark-scrollbar scrollable-container bg-white dark:bg-zinc-900">
       {/* Header */}
       <Navbar
         subscriptionTier={subscriptionTier}
@@ -161,27 +168,73 @@ export default function Dashboard() {
         <div className="max-w-6xl mx-auto flex flex-col gap-8">
           {/* Welcome Message */}
           <div className="flex flex-col md:flex-row justify-between items-center mt-4">
-            <p className="text-4xl text-gray-100 text-center">
+            <p className="text-4xl text-zinc-800 dark:text-gray-100 text-center">
               Welcome back, {user?.username}
             </p>
             {/* Create Character Button */}
             <button
               onClick={handleCreateCharacter}
-              className="w-full font-semibold cursor-pointer md:w-auto my-8 md:my-0 bg-transparent from-transparent to-transparent border border-zinc-600 hover:bg-gradient-to-bl hover:from-zinc-700 hover:to-zinc-600 hover:scale-102 py-3 px-6 rounded-lg flex items-center justify-center gap-2 transition-all duration-300 ease-in-out"
+              className="w-full font-semibold cursor-pointer md:w-auto my-8 md:my-0 text-zinc-800 dark:text-white bg-transparent from-transparent to-transparent border border-zinc-300 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-gradient-to-bl dark:hover:from-zinc-700 dark:hover:to-zinc-600 hover:scale-102 py-3 px-6 rounded-lg flex items-center justify-center gap-2 transition-all duration-300 ease-in-out"
             >
               <FiPlus size={20} /> Create New Character
             </button>
           </div>
 
+          {/* Credit Usage Dashboard - Debug Mode Only */}
+          {showDebugStats && (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {/* Current Balance */}
+              <div className="md:col-span-2">
+                <CreditBalance
+                  size="lg"
+                  showRefresh={true}
+                  className="h-full"
+                />
+              </div>
+
+              {/* Usage Stats */}
+              <div className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <FiActivity className="text-blue-500" size={20} />
+                  <h3 className="font-semibold text-zinc-900 dark:text-white">
+                    Total Messages
+                  </h3>
+                </div>
+                <p className="text-2xl font-bold text-zinc-900 dark:text-white">
+                  {usageStats?.totalRequests?.toLocaleString() || "0"}
+                </p>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                  {formatCredits(usageStats?.totalCreditsUsed || 0)} used
+                </p>
+              </div>
+
+              {/* Cost Stats */}
+              <div className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <FiDollarSign className="text-green-500" size={20} />
+                  <h3 className="font-semibold text-zinc-900 dark:text-white">
+                    Total Cost
+                  </h3>
+                </div>
+                <p className="text-2xl font-bold text-zinc-900 dark:text-white">
+                  ${(usageStats?.totalCostUsd || 0).toFixed(2)}
+                </p>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                  {(usageStats?.totalTokens || 0).toLocaleString()} tokens
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Subscription Status */}
           {!isLoadingSubscription &&
             subscriptionTier === "free" &&
             characters.length >= 3 && (
-              <div className="bg-gradient-to-bl from-cyan-800 via-cyan-900/50 to-cyan-700 px-[1px] py-[1px] rounded-lg">
-                <div className="bg-zinc-900 rounded-lg">
-                  <div className="flex flex-col md:flex-row md:justify-between p-4 rounded-lg bg-gradient-to-tr from-cyan-700/30 via-cyan-900/20 to-cyan-900/40 text-sky-200/80">
+              <div className="bg-gradient-to-bl from-cyan-500 via-cyan-600/50 to-cyan-400 dark:from-cyan-800 dark:via-cyan-900/50 dark:to-cyan-700 p-[1px] rounded-lg">
+                <div className="bg-white dark:bg-zinc-900 rounded-lg">
+                  <div className="flex flex-col md:flex-row md:justify-between p-4 rounded-lg bg-gradient-to-tr from-cyan-400/20 via-cyan-100/10 to-cyan-100/20 dark:from-cyan-700/30 dark:via-cyan-900/20 dark:to-cyan-900/40 text-sky-900 dark:text-sky-200/80">
                     <div className="flex flex-col mb-4 md:mb-0 gap-2">
-                      <p className="text-2xl leading-[1.25rem] text-zinc-100">
+                      <p className="text-2xl leading-[1.25rem] text-zinc-800 dark:text-zinc-100">
                         You've reached the character limit for free accounts
                       </p>
                       <p className="text-md">
@@ -191,7 +244,7 @@ export default function Dashboard() {
                     </div>
                     <Link
                       to="/plans"
-                      className="text-white bg-gradient-to-bl from-cyan-800 to-cyan-900 my-auto hover:opacity-95 px-4 py-2 rounded-lg inline-block"
+                      className="text-white bg-gradient-to-bl from-cyan-600 to-cyan-700 dark:from-cyan-800 dark:to-cyan-900 my-auto hover:opacity-95 px-4 py-2 rounded-lg inline-block"
                     >
                       Upgrade to Pro
                     </Link>
@@ -246,30 +299,18 @@ export default function Dashboard() {
               }`}
             >
               <div className="flex flex-col items-center justify-center">
-                <p className="text-gray-100 text-center text-3xl font-bold leading-[2rem]">
+                <p className="text-zinc-800 dark:text-gray-100 text-center text-3xl font-bold leading-[2rem]">
                   You don't have any characters yet
                 </p>
-                <p className="text-gray-300 text-center text-lg">
-                  Create one to get started or explore public characters
+                <p className="text-zinc-600 dark:text-gray-400 text-center text-lg mt-2 mb-6">
+                  Click the button below to create your first one.
                 </p>
-              </div>
-              <div className="flex items-center gap-2">
                 <button
                   onClick={handleCreateCharacter}
-                  className="bg-zinc-100 hover:bg-white text-zinc-900 py-3 px-6 rounded-lg flex items-center justify-center gap-2 mt-2 cursor-pointer transition-all duration-300 ease-in-out group/createCharacterButton"
+                  className="bg-gradient-to-bl from-zinc-700 to-zinc-600 text-white font-semibold py-3 px-6 rounded-lg flex items-center justify-center gap-2 transition-all duration-300 ease-in-out hover:scale-102"
                 >
-                  <div className="flex items-center justify-center gap-2 group-hover/createCharacterButton:scale-102 transition-all duration-300 ease-in-out font-semibold">
-                    <FiPlus size={20} /> Create Character
-                  </div>
+                  <FiPlus size={20} /> Create Your First Character
                 </button>
-                <Link
-                  to="/explore"
-                  className="border border-zinc-600 hover:bg-zinc-700 hover:border-zinc-700 text-white py-3 px-6 rounded-lg flex items-center justify-center gap-2 mt-2 cursor-pointer transition-all duration-300 ease-in-out group/exploreButton"
-                >
-                  <div className="flex items-center justify-center gap-2 group-hover/exploreButton:scale-102 transition-all duration-300 ease-in-out">
-                    Explore
-                  </div>
-                </Link>
               </div>
             </div>
           )}

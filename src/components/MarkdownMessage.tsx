@@ -18,30 +18,32 @@ const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
         components={{
           // Headings
           h1: ({ children }) => (
-            <h1 className="text-xl font-bold mb-3 text-zinc-100">{children}</h1>
+            <h1 className="text-xl font-bold mb-3 text-zinc-900 dark:text-zinc-100">
+              {children}
+            </h1>
           ),
           h2: ({ children }) => (
-            <h2 className="text-lg font-semibold mb-2 text-zinc-100">
+            <h2 className="text-lg font-semibold mb-2 text-zinc-900 dark:text-zinc-100">
               {children}
             </h2>
           ),
           h3: ({ children }) => (
-            <h3 className="text-base font-semibold mb-2 text-zinc-100">
+            <h3 className="text-base font-semibold mb-2 text-zinc-900 dark:text-zinc-100">
               {children}
             </h3>
           ),
           h4: ({ children }) => (
-            <h4 className="text-sm font-semibold mb-1 text-zinc-100">
+            <h4 className="text-sm font-semibold mb-1 text-zinc-900 dark:text-zinc-100">
               {children}
             </h4>
           ),
           h5: ({ children }) => (
-            <h5 className="text-sm font-medium mb-1 text-zinc-100">
+            <h5 className="text-sm font-medium mb-1 text-zinc-900 dark:text-zinc-100">
               {children}
             </h5>
           ),
           h6: ({ children }) => (
-            <h6 className="text-xs font-medium mb-1 text-zinc-100">
+            <h6 className="text-xs font-medium mb-1 text-zinc-900 dark:text-zinc-100">
               {children}
             </h6>
           ),
@@ -68,10 +70,14 @@ const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
 
           // Emphasis
           strong: ({ children }) => (
-            <strong className="font-semibold text-zinc-50">{children}</strong>
+            <strong className="font-semibold text-zinc-950 dark:text-zinc-50">
+              {children}
+            </strong>
           ),
           em: ({ children }) => (
-            <em className="italic text-zinc-200">{children}</em>
+            <em className="italic text-zinc-950 dark:text-zinc-50">
+              {children}
+            </em>
           ),
 
           // Code
@@ -79,19 +85,19 @@ const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
             const isInline = !className;
             if (isInline) {
               return (
-                <code className="bg-zinc-700/50 text-zinc-200 px-1.5 py-0.5 rounded text-sm font-mono">
+                <code className="dark:bg-zinc-700/50 bg-zinc-200/50 dark:text-zinc-200 text-zinc-800 px-1.5 py-0.5 rounded text-sm font-mono">
                   {children}
                 </code>
               );
             }
             return (
-              <code className="block bg-zinc-800 text-zinc-200 p-3 rounded-lg text-sm font-mono overflow-x-auto whitespace-pre">
+              <code className="block bg-zinc-200 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 p-3 rounded-lg text-sm font-mono overflow-x-auto whitespace-pre">
                 {children}
               </code>
             );
           },
           pre: ({ children }) => (
-            <pre className="bg-zinc-800 text-zinc-200 p-3 rounded-lg text-sm font-mono overflow-x-auto mb-3 border border-zinc-700">
+            <pre className="bg-zinc-200 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 p-3 rounded-lg text-sm font-mono overflow-x-auto mb-3 border border-zinc-700 dark:border-zinc-600">
               {children}
             </pre>
           ),
@@ -102,7 +108,7 @@ const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
               href={href}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-blue-400 hover:text-blue-300 underline transition-colors"
+              className="dark:text-blue-400 dark:hover:text-blue-300 text-blue-600 hover:text-blue-500 underline transition-colors"
             >
               {children}
             </a>
@@ -110,47 +116,51 @@ const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
 
           // Blockquotes
           blockquote: ({ children }) => (
-            <blockquote className="border-l-4 border-zinc-600 pl-4 py-2 mb-3 bg-zinc-800/30 rounded-r">
+            <blockquote className="border-l-4 border-zinc-400 dark:border-zinc-600 px-4 py-2 mb-3 bg-zinc-200/30 dark:bg-zinc-800/30 text-xl rounded-r">
               {children}
             </blockquote>
           ),
 
           // Horizontal rule
-          hr: () => <hr className="border-zinc-600 my-4" />,
+          hr: () => (
+            <hr className="border-zinc-400 dark:border-zinc-600 my-4" />
+          ),
 
           // Tables
           table: ({ children }) => (
             <div className="overflow-x-auto mb-3">
-              <table className="min-w-full border border-zinc-600 rounded-lg">
+              <table className="min-w-full border border-zinc-400 dark:border-zinc-600 rounded-lg">
                 {children}
               </table>
             </div>
           ),
           thead: ({ children }) => (
-            <thead className="bg-zinc-800">{children}</thead>
+            <thead className="bg-zinc-200 dark:bg-zinc-800">{children}</thead>
           ),
           tbody: ({ children }) => (
-            <tbody className="bg-zinc-900/50">{children}</tbody>
+            <tbody className="bg-zinc-200 dark:bg-zinc-800">{children}</tbody>
           ),
           tr: ({ children }) => (
-            <tr className="border-b border-zinc-600 last:border-b-0">
+            <tr className="border-b border-zinc-400 dark:border-zinc-600 last:border-b-0">
               {children}
             </tr>
           ),
           th: ({ children }) => (
-            <th className="px-3 py-2 text-left font-semibold text-zinc-200 border-r border-zinc-600 last:border-r-0">
+            <th className="px-3 py-2 text-left font-semibold text-zinc-800 dark:text-zinc-200 border-r border-zinc-400 dark:border-zinc-600 last:border-r-0">
               {children}
             </th>
           ),
           td: ({ children }) => (
-            <td className="px-3 py-2 text-zinc-300 border-r border-zinc-600 last:border-r-0">
+            <td className="px-3 py-2 text-zinc-700 dark:text-zinc-300 border-r border-zinc-400 dark:border-zinc-600 last:border-r-0">
               {children}
             </td>
           ),
 
           // Strikethrough (from remark-gfm)
           del: ({ children }) => (
-            <del className="line-through text-zinc-400">{children}</del>
+            <del className="line-through text-zinc-400 dark:text-zinc-400">
+              {children}
+            </del>
           ),
         }}
       >

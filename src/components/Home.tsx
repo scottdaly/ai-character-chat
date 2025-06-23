@@ -341,10 +341,10 @@ export default function Home() {
               >
                 {slide.id % 2 === 1 && (
                   <div className="flex flex-col justify-start items-start h-14">
-                    <h3 className="text-2xl md:text-3xl font-semibold text-black dark:text-white leading-4 pb-2 instrument-serif-regular">
+                    <h3 className="text-2xl md:text-3xl font-semibold text-white leading-4 pb-2 instrument-serif-regular">
                       {slide.title}
                     </h3>
-                    <p className="text-xs md:text-sm text-neutral-700 dark:text-neutral-300">
+                    <p className="text-xs md:text-sm text-neutral-400">
                       {slide.subtitle}
                     </p>
                   </div>
@@ -359,10 +359,10 @@ export default function Home() {
                 </div>
                 {slide.id % 2 === 0 && (
                   <div className="flex flex-col items-start justify-end h-14">
-                    <h3 className="text-2xl md:text-3xl font-semibold text-black dark:text-white leading-tight instrument-serif-regular">
+                    <h3 className="text-2xl md:text-3xl font-semibold text-white leading-tight instrument-serif-regular">
                       {slide.title}
                     </h3>
-                    <p className="text-xs md:text-sm text-neutral-700 dark:text-neutral-300 leading-2 pt-0.5">
+                    <p className="text-xs md:text-sm text-neutral-400  leading-2 pt-0.5">
                       {slide.subtitle}
                     </p>
                   </div>

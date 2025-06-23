@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import { useCredit } from "../contexts/CreditContext";
 import { FiCheck } from "react-icons/fi";
 import Navbar from "./Navbar";
 import { useSearchParams } from "react-router-dom";
@@ -11,6 +12,7 @@ const plans = [
     name: "Free",
     price: "$0",
     period: "forever",
+    credits: "1,000 credits/month",
     features: [
       "Up to 3 AI characters",
       "Basic chat functionality",
@@ -24,6 +26,7 @@ const plans = [
     name: "Pro",
     price: "$10",
     period: "per month",
+    credits: "20,000 credits/month",
     features: [
       "Unlimited AI characters",
       "Extended chat limits",
@@ -42,6 +45,7 @@ export default function SubscriptionPlans() {
     isLoadingSubscription,
     refreshSubscriptionStatus,
   } = useAuth();
+  const { refreshBalance } = useCredit();
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{
     message: string;
@@ -55,8 +59,9 @@ export default function SubscriptionPlans() {
     const canceled = searchParams.get("canceled");
 
     if (success === "true") {
-      // Refresh subscription status from AuthContext
+      // Refresh subscription status and credit balance
       refreshSubscriptionStatus();
+      refreshBalance();
     } else if (canceled === "true") {
       setToast({
         message:
@@ -138,9 +143,9 @@ export default function SubscriptionPlans() {
 
       <div className="flex-1 p-4">
         <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-12">
+          <div className="text-center mb-8">
             <h2 className="text-3xl font-bold">Choose Your Plan</h2>
-            <p className="text-gray-400">
+            <p className="text-gray-600 dark:text-gray-400">
               Unlock the full potential of AI characters
             </p>
           </div>
@@ -151,8 +156,8 @@ export default function SubscriptionPlans() {
                 key={plan.id}
                 className={`flex flex-col justify-between rounded-xl p-8 relative ${
                   subscriptionTier === plan.id
-                    ? "border border-zinc-300 bg-zinc-700/60"
-                    : "bg-zinc-700/60 border border-zinc-600"
+                    ? "border border-zinc-500 bg-zinc-100/50 dark:border-zinc-300 dark:bg-zinc-700/60"
+                    : "bg-zinc-100/50 dark:bg-zinc-700/60 border border-zinc-200 dark:border-zinc-600"
                 }`}
               >
                 <div>
@@ -165,12 +170,17 @@ export default function SubscriptionPlans() {
                         <span className="text-4xl font-semibold">
                           {plan.price}
                         </span>
-                        <span className="text-gray-400">/ month</span>
+                        <span className="text-gray-600 dark:text-gray-400">
+                          / month
+                        </span>
+                      </div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                        {plan.credits}
                       </div>
                     </div>
                     <div>
                       {subscriptionTier === plan.id && (
-                        <span className="text-zinc-100 bg-zinc-600 px-2 py-1 rounded-full text-sm">
+                        <span className="text-zinc-900 dark:text-zinc-100 bg-zinc-200 dark:bg-zinc-600 px-2 py-1 rounded-full text-sm">
                           Current Plan
                         </span>
                       )}
@@ -180,7 +190,7 @@ export default function SubscriptionPlans() {
                   <ul className="space-y-3 mb-24">
                     {plan.features.map((feature, index) => (
                       <li key={index} className="flex items-center gap-2">
-                        <FiCheck className="text-zinc-400" />
+                        <FiCheck className="text-zinc-600 dark:text-zinc-400" />
                         <span>{feature}</span>
                       </li>
                     ))}
@@ -190,29 +200,38 @@ export default function SubscriptionPlans() {
                 {subscriptionTier === plan.id ? (
                   <button
                     onClick={handleManageSubscription}
-                    disabled={true}
+                    disabled={loading}
                     className={`w-full py-3 px-6 rounded-lg transition-colors ${
                       loading
                         ? "opacity-50 cursor-not-allowed"
-                        : "border border-zinc-500"
+                        : "border border-zinc-400 dark:border-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-600 cursor-pointer"
                     }`}
                   >
-                    {loading ? "Processing..." : "Current Plan"}
+                    {loading ? "Processing..." : "Current plan"}
                   </button>
                 ) : (
                   <button
-                    onClick={() => handleSubscribe(plan.priceId)}
+                    onClick={() => {
+                      // Handle cancellation for Pro users wanting to downgrade to Free
+                      if (plan.id === "free" && subscriptionTier === "pro") {
+                        handleManageSubscription();
+                      } else {
+                        handleSubscribe(plan.priceId);
+                      }
+                    }}
                     disabled={loading}
                     className={`w-full py-3 px-6 rounded-lg transition-colors cursor-pointer ${
                       loading
                         ? "opacity-50 cursor-not-allowed"
                         : plan.id === "free"
-                        ? "bg-zinc-700 hover:bg-red-600/50 duration-300 ease-in-out"
+                        ? "bg-zinc-200 hover:bg-red-500 hover:text-white dark:bg-zinc-700 dark:hover:bg-red-600/50 duration-300 ease-in-out"
                         : "bg-blue-600 hover:bg-blue-800 hover:scale-102 transition-all duration-500 ease-in-out"
                     }`}
                   >
                     {loading
                       ? "Processing..."
+                      : plan.id === "free" && subscriptionTier === "pro"
+                      ? `Manage Subscription`
                       : plan.id === "free"
                       ? `Cancel Subscription`
                       : `Upgrade to ${plan.name}`}

@@ -28,7 +28,31 @@ const {
   getDefaultModel,
   isModelAvailable,
   supportsImages,
+  getModelForCategory,
+  getCategoryForModel,
+  getAllCategoryIds,
 } = require("./models");
+
+// Import credit system components
+const { defineCreditModels } = require("./models/creditModels");
+const { defineReservationModels } = require("./models/reservationModels");
+const CreditService = require("./services/creditService");
+const StreamingTokenTracker = require("./services/streamingTokenTracker");
+const ReservationCleanupService = require("./services/reservationCleanupService");
+const TokenExtractorService = require("./services/tokenExtractorService");
+const TokenizerService = require("./services/tokenizerService");
+const AnalyticsService = require("./services/analyticsService");
+const {
+  creditOperationLimiter,
+  messageLimiter,
+  strictCreditLimiter,
+  creditValidationRules,
+  handleValidationErrors,
+  sanitizeInput,
+  securityHeaders,
+  securityLogger,
+  addCreditContext,
+} = require("./middleware/creditValidation");
 
 // Initialize Stripe with the secret key from environment variables
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
@@ -123,6 +147,18 @@ const User = sequelize.define("User", {
     allowNull: false,
   },
   subscriptionEndsAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+  creditBalance: {
+    type: DataTypes.DECIMAL(10, 4),
+    defaultValue: 0,
+    allowNull: false,
+    validate: {
+      min: -100, // Allow small negative balance for edge cases
+    },
+  },
+  lastCreditRefresh: {
     type: DataTypes.DATE,
     allowNull: true,
   },
@@ -246,6 +282,59 @@ Conversation.belongsTo(Message, {
   foreignKey: "currentHeadId",
 });
 
+// Initialize credit system models
+const creditModels = defineCreditModels(sequelize);
+
+// Initialize reservation system models
+const reservationModels = defineReservationModels(sequelize);
+
+// Define relationships for credit models
+User.hasMany(creditModels.TokenUsage, { foreignKey: "userId" });
+creditModels.TokenUsage.belongsTo(User, { foreignKey: "userId" });
+
+User.hasMany(creditModels.CreditCompensation, { foreignKey: "userId" });
+creditModels.CreditCompensation.belongsTo(User, { foreignKey: "userId" });
+
+User.hasMany(creditModels.CreditAuditLog, { foreignKey: "userId" });
+creditModels.CreditAuditLog.belongsTo(User, { foreignKey: "userId" });
+
+User.hasMany(creditModels.CreditRefreshHistory, { foreignKey: "userId" });
+creditModels.CreditRefreshHistory.belongsTo(User, { foreignKey: "userId" });
+
+Conversation.hasMany(creditModels.TokenUsage, { foreignKey: "conversationId" });
+creditModels.TokenUsage.belongsTo(Conversation, {
+  foreignKey: "conversationId",
+});
+
+Message.hasMany(creditModels.TokenUsage, { foreignKey: "messageId" });
+creditModels.TokenUsage.belongsTo(Message, { foreignKey: "messageId" });
+
+Message.hasMany(creditModels.CreditCompensation, { foreignKey: "messageId" });
+creditModels.CreditCompensation.belongsTo(Message, { foreignKey: "messageId" });
+
+// Define relationships for reservation models
+User.hasMany(reservationModels.CreditReservation, { foreignKey: "userId" });
+reservationModels.CreditReservation.belongsTo(User, { foreignKey: "userId" });
+
+User.hasMany(reservationModels.ReservationSettlement, { foreignKey: "userId" });
+reservationModels.ReservationSettlement.belongsTo(User, { foreignKey: "userId" });
+
+Conversation.hasMany(reservationModels.CreditReservation, { foreignKey: "conversationId" });
+reservationModels.CreditReservation.belongsTo(Conversation, { foreignKey: "conversationId" });
+
+Message.hasMany(reservationModels.CreditReservation, { foreignKey: "messageId" });
+reservationModels.CreditReservation.belongsTo(Message, { foreignKey: "messageId" });
+
+reservationModels.CreditReservation.hasMany(reservationModels.ReservationSettlement, { foreignKey: "reservationId" });
+reservationModels.ReservationSettlement.belongsTo(reservationModels.CreditReservation, { foreignKey: "reservationId" });
+
+// Initialize credit services
+let creditService;
+let tokenExtractor;
+let analyticsService;
+let streamingTokenTracker;
+let reservationCleanupService;
+
 const syncOptions =
   process.env.NODE_ENV === "development" ? { alter: true } : {};
 
@@ -342,9 +431,43 @@ const initializeStripePortal = async () => {
       );
     }
 
-    // Sync database with new UUID schema
+    // Sync database with new UUID schema including credit tables
     await sequelize.sync({ force: false });
     await initializeStripePortal();
+
+    // Initialize credit services after database sync
+    const allModels = {
+      User,
+      Character,
+      Conversation,
+      Message,
+      ...creditModels,
+      ...reservationModels,
+      sequelize, // Add sequelize instance to models
+    };
+
+    // Initialize tokenizer service
+    const tokenizerService = new TokenizerService();
+    
+    // Initialize credit service with tokenizer
+    creditService = new CreditService(sequelize, allModels, tokenizerService);
+    tokenExtractor = new TokenExtractorService();
+    
+    // Initialize streaming token tracker
+    streamingTokenTracker = new StreamingTokenTracker(creditService, tokenizerService);
+    
+    // Initialize reservation cleanup service
+    reservationCleanupService = new ReservationCleanupService(creditService, streamingTokenTracker);
+    
+    // Initialize analytics service
+    analyticsService = new AnalyticsService(allModels);
+
+    // Start the reservation cleanup service
+    const cleanupIntervalMinutes = process.env.CLEANUP_INTERVAL_MINUTES || 5;
+    reservationCleanupService.start(parseInt(cleanupIntervalMinutes));
+
+    console.log("Credit system initialized successfully with tokenizer support");
+    console.log(`Reservation cleanup service started with ${cleanupIntervalMinutes}-minute intervals`);
 
     // Log existing data to help debug persistence
     const userCount = await User.count();
@@ -354,12 +477,12 @@ const initializeStripePortal = async () => {
     );
 
     // Check if new columns need to be added
-    const hasStripeColumns = await sequelize.query(
-      "SELECT name FROM pragma_table_info('Users') WHERE name IN ('stripeCustomerId', 'subscriptionStatus', 'subscriptionTier', 'subscriptionEndsAt', 'profilePicture')",
+    const hasUserColumns = await sequelize.query(
+      "SELECT name FROM pragma_table_info('Users') WHERE name IN ('stripeCustomerId', 'subscriptionStatus', 'subscriptionTier', 'subscriptionEndsAt', 'profilePicture', 'creditBalance', 'lastCreditRefresh')",
       { type: Sequelize.QueryTypes.SELECT }
     );
 
-    if (hasStripeColumns.length < 5) {
+    if (hasUserColumns.length < 7) {
       // Add missing columns one by one
       const columnsToAdd = [
         {
@@ -387,11 +510,23 @@ const initializeStripePortal = async () => {
           type: "TEXT",
           constraint: "NULL",
         },
+        {
+          name: "creditBalance",
+          type: "DECIMAL(10,4)",
+          default: "0",
+          constraint: "NOT NULL",
+        },
+        {
+          name: "lastCreditRefresh",
+          type: "DATETIME",
+          constraint: "NULL",
+        },
       ];
 
       for (const column of columnsToAdd) {
-        const exists = hasStripeColumns.some((col) => col.name === column.name);
+        const exists = hasUserColumns.some((col) => col.name === column.name);
         if (!exists) {
+          console.log(`Adding column ${column.name} to Users table...`);
           await sequelize.query(
             `ALTER TABLE Users ADD COLUMN ${column.name} ${column.type} ${
               column.constraint || ""
@@ -528,6 +663,46 @@ const initializeStripePortal = async () => {
       console.log("Added database indexes for tree structure");
     } catch (indexError) {
       console.log("Indexes may already exist:", indexError.message);
+    }
+
+    // Initialize credit balances for existing users
+    console.log("Initializing credit balances for existing users...");
+    const usersWithoutCredits = await sequelize.query(
+      "SELECT id, subscriptionTier FROM Users WHERE creditBalance = 0 AND lastCreditRefresh IS NULL",
+      { type: Sequelize.QueryTypes.SELECT }
+    );
+
+    for (const userData of usersWithoutCredits) {
+      const initialCredits = userData.subscriptionTier === "pro" ? 20000 : 1000;
+      await sequelize.query(
+        "UPDATE Users SET creditBalance = ?, lastCreditRefresh = ? WHERE id = ?",
+        {
+          replacements: [initialCredits, new Date(), userData.id],
+          type: Sequelize.QueryTypes.UPDATE,
+        }
+      );
+    }
+
+    if (usersWithoutCredits.length > 0) {
+      console.log(
+        `Initialized credits for ${usersWithoutCredits.length} existing users`
+      );
+    }
+
+    // Create credit system indexes
+    try {
+      await sequelize.query(
+        "CREATE INDEX IF NOT EXISTS idx_token_usage_user_date ON TokenUsages(userId, createdAt)"
+      );
+      await sequelize.query(
+        "CREATE INDEX IF NOT EXISTS idx_credit_audit_user_date ON CreditAuditLogs(userId, createdAt)"
+      );
+      await sequelize.query(
+        "CREATE INDEX IF NOT EXISTS idx_compensation_pending ON CreditCompensations(status) WHERE status = 'pending'"
+      );
+      console.log("Added credit system database indexes");
+    } catch (indexError) {
+      console.log("Credit indexes may already exist:", indexError.message);
     }
 
     // Create the official Nevermade user if it doesn't exist
@@ -763,7 +938,12 @@ app.options(
 
 app.use(passport.initialize());
 
-// Request logging middleware (simplified for production)
+// Add credit system security middleware
+app.use(securityHeaders);
+app.use(sanitizeInput);
+app.use(securityLogger);
+
+// Request logging middleware (only for development)
 app.use((req, res, next) => {
   if (process.env.NODE_ENV === "development") {
     console.log(`${req.method} ${req.path}`);
@@ -882,21 +1062,16 @@ const retryUserLookup = async (userId, maxRetries = 3, delay = 200) => {
     try {
       const user = await User.findByPk(userId);
       if (user) {
-        console.log(`[RETRY_DEBUG] User found on attempt ${i + 1}`);
         return user;
       }
 
       if (i < maxRetries - 1) {
-        console.log(
-          `[RETRY_DEBUG] User not found on attempt ${
-            i + 1
-          }, retrying in ${delay}ms...`
-        );
+        // User not found, retrying...
         await new Promise((resolve) => setTimeout(resolve, delay));
         delay *= 2; // Exponential backoff
       }
     } catch (error) {
-      console.error(`[RETRY_DEBUG] Database error on attempt ${i + 1}:`, error);
+      console.error(`Database error on retry attempt:`, error);
       if (i === maxRetries - 1) throw error;
       await new Promise((resolve) => setTimeout(resolve, delay));
       delay *= 2;
@@ -913,13 +1088,7 @@ const authenticateToken = async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Enhanced debugging for token verification
-    console.log(`[TOKEN_DEBUG] Token verified:`, {
-      userId: decoded.userId,
-      isAdmin: !!decoded.isAdmin,
-      route: req.path,
-      timestamp: new Date().toISOString(),
-    });
+    // Token verified successfully
 
     // Handle admin login
     if (decoded.isAdmin) {
@@ -932,19 +1101,15 @@ const authenticateToken = async (req, res, next) => {
       return next();
     }
 
-    // Existing user lookup with enhanced debugging and retry mechanism
-    console.log(
-      `[TOKEN_DEBUG] Looking up user ${decoded.userId} in database...`
-    );
+    // Look up user in database
 
     // Use retry mechanism for user lookup
     const user = await retryUserLookup(decoded.userId);
 
     if (!user) {
       console.error(
-        `[TOKEN_DEBUG] CRITICAL: User ${decoded.userId} not found in database after retries!`
+        `CRITICAL: User ${decoded.userId} not found in database after retries on ${req.method} ${req.path}`
       );
-      console.error(`[TOKEN_DEBUG] Route: ${req.path}, Method: ${req.method}`);
 
       // Additional debugging: try to find user by other means
       try {
@@ -954,7 +1119,7 @@ const authenticateToken = async (req, res, next) => {
           order: [["createdAt", "DESC"]],
         });
         console.log(
-          `[TOKEN_DEBUG] Recent users in database:`,
+          `Recent users in database:`,
           allUsers.map((u) => ({
             id: u.id,
             googleId: u.googleId,
@@ -963,33 +1128,385 @@ const authenticateToken = async (req, res, next) => {
           }))
         );
       } catch (debugError) {
-        console.error(
-          `[TOKEN_DEBUG] Failed to query recent users:`,
-          debugError
-        );
+        console.error(`Failed to query recent users:`, debugError);
       }
 
       return res.status(404).json({ error: "User not found" });
     }
 
-    console.log(`[TOKEN_DEBUG] User found successfully:`, {
-      userId: user.id,
-      email: user.email,
-      hasUsername: !!user.username,
-      createdAt: user.createdAt,
-    });
+    // User found successfully
 
     req.user = user;
     next();
   } catch (err) {
     console.error("Token verification error:", err);
     console.error(
-      `[TOKEN_DEBUG] Token verification failed for route ${req.path}:`,
+      `Token verification failed for ${req.method} ${req.path}:`,
       err.message
     );
     res.status(401).json({ error: "Invalid token" });
   }
 };
+
+// Credit System API Routes
+app.get(
+  "/api/credit/balance",
+  authenticateToken,
+  addCreditContext,
+  async (req, res) => {
+    try {
+      const balance = await creditService.checkCreditBalance(
+        String(req.user.id),
+        0
+      );
+      res.json({
+        balance: balance.balance,
+        subscriptionTier: balance.subscriptionTier,
+        hasCredits: balance.hasCredits,
+      });
+    } catch (error) {
+      console.error("Failed to get credit balance:", error);
+      res.status(500).json({ error: "Failed to get credit balance" });
+    }
+  }
+);
+
+app.get(
+  "/api/credit/usage",
+  authenticateToken,
+  creditValidationRules.validateUsageStats,
+  handleValidationErrors,
+  creditOperationLimiter,
+  async (req, res) => {
+    try {
+      const { startDate, endDate, limit } = req.query;
+      const options = {};
+
+      if (startDate) options.startDate = new Date(startDate);
+      if (endDate) options.endDate = new Date(endDate);
+      if (limit) options.limit = parseInt(limit);
+
+      const stats = await creditService.getCreditUsageStats(
+        req.user.id,
+        options
+      );
+      res.json(stats);
+    } catch (error) {
+      console.error("Failed to get usage stats:", error);
+      res.status(500).json({ error: "Failed to get usage statistics" });
+    }
+  }
+);
+
+// Admin endpoint to process pending compensations
+app.post(
+  "/api/admin/credit/process-compensations",
+  authenticateToken,
+  strictCreditLimiter,
+  async (req, res) => {
+    if (!req.user.isAdmin) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
+    try {
+      const results = await creditService.processPendingCompensations();
+      res.json({
+        success: true,
+        processed: results.filter((r) => r.success).length,
+        failed: results.filter((r) => !r.success).length,
+        results,
+      });
+    } catch (error) {
+      console.error("Failed to process compensations:", error);
+      res.status(500).json({ error: "Failed to process compensations" });
+    }
+  }
+);
+
+// Admin endpoint to get cleanup service status
+app.get(
+  "/api/admin/reservations/cleanup/status",
+  authenticateToken,
+  strictCreditLimiter,
+  async (req, res) => {
+    if (!req.user.isAdmin) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
+    try {
+      const healthStatus = reservationCleanupService.getHealthStatus();
+      const stats = reservationCleanupService.getStats();
+      
+      res.json({
+        success: true,
+        health: healthStatus,
+        statistics: stats
+      });
+    } catch (error) {
+      console.error("Failed to get cleanup service status:", error);
+      res.status(500).json({ error: "Failed to get cleanup service status" });
+    }
+  }
+);
+
+// Admin endpoint to force cleanup run
+app.post(
+  "/api/admin/reservations/cleanup/force",
+  authenticateToken,
+  strictCreditLimiter,
+  async (req, res) => {
+    if (!req.user.isAdmin) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
+    try {
+      const results = await reservationCleanupService.forceCleanup();
+      res.json({
+        success: true,
+        message: "Cleanup completed successfully",
+        results
+      });
+    } catch (error) {
+      console.error("Failed to force cleanup:", error);
+      res.status(500).json({ error: "Failed to force cleanup" });
+    }
+  }
+);
+
+// Admin endpoint to get active reservations
+app.get(
+  "/api/admin/reservations/active",
+  authenticateToken,
+  strictCreditLimiter,
+  async (req, res) => {
+    if (!req.user.isAdmin) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
+    try {
+      const { page = 1, limit = 50, userId } = req.query;
+      
+      // This would need to be implemented in CreditService
+      // For now, return a placeholder response
+      res.json({
+        success: true,
+        message: "Active reservations endpoint - implementation needed",
+        query: { page, limit, userId }
+      });
+    } catch (error) {
+      console.error("Failed to get active reservations:", error);
+      res.status(500).json({ error: "Failed to get active reservations" });
+    }
+  }
+);
+
+// Credit estimation endpoint for frontend
+app.post(
+  "/api/credit/estimate",
+  authenticateToken,
+  creditOperationLimiter,
+  async (req, res) => {
+    try {
+      const { content, model, conversationId, attachments } = req.body;
+
+      if (!content || !model) {
+        return res.status(400).json({ 
+          error: "Content and model are required for estimation" 
+        });
+      }
+
+      // Get provider from model name
+      const provider = getModelProvider(model);
+
+      // If conversationId provided, get conversation context
+      let context = {};
+      if (conversationId) {
+        const conversation = await Conversation.findOne({
+          where: {
+            id: conversationId,
+            UserId: req.user.id
+          },
+          include: [Character]
+        });
+
+        if (conversation) {
+          // Get conversation history
+          let previousMessages = [];
+          if (conversation.currentHeadId) {
+            previousMessages = await getMessagePath(conversation.currentHeadId);
+          } else {
+            previousMessages = await Message.findAll({
+              where: { ConversationId: conversation.id },
+              order: [["createdAt", "ASC"]]
+            });
+          }
+
+          context = {
+            systemPrompt: conversation.Character?.systemPrompt,
+            conversationHistory: previousMessages.map(msg => ({
+              role: msg.role,
+              content: msg.content,
+              attachments: msg.attachments
+            })),
+            attachments
+          };
+        }
+      }
+
+      // Get precise token estimation
+      const estimate = await creditService.estimateMessageCredits(
+        content,
+        model,
+        provider,
+        context
+      );
+
+      res.json({
+        creditsNeeded: estimate.creditsNeeded,
+        inputTokens: estimate.inputTokens,
+        estimatedOutputTokens: estimate.estimatedOutputTokens,
+        totalCostUsd: estimate.totalCostUsd,
+        isExact: estimate.isExact,
+        method: estimate.tokenCountMethod,
+        bufferMultiplier: estimate.bufferMultiplier,
+        requiredCredits: estimate.creditsNeeded * estimate.bufferMultiplier
+      });
+    } catch (error) {
+      console.error("Failed to estimate credits:", error);
+      res.status(500).json({ error: "Failed to estimate credits" });
+    }
+  }
+);
+
+// Admin Analytics Endpoints
+// Get system-wide usage statistics
+app.get(
+  "/api/admin/analytics/system",
+  authenticateToken,
+  creditOperationLimiter,
+  async (req, res) => {
+    if (!req.user.isAdmin) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
+    try {
+      const { startDate, endDate } = req.query;
+      const options = {};
+      
+      if (startDate) options.startDate = new Date(startDate);
+      if (endDate) options.endDate = new Date(endDate);
+
+      const analytics = await analyticsService.getSystemUsage(options);
+      res.json(analytics);
+    } catch (error) {
+      console.error("Failed to get system analytics:", error);
+      res.status(500).json({ error: "Failed to get system analytics" });
+    }
+  }
+);
+
+// Get usage statistics for a specific user
+app.get(
+  "/api/admin/analytics/user/:userId",
+  authenticateToken,
+  creditOperationLimiter,
+  async (req, res) => {
+    if (!req.user.isAdmin) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
+    try {
+      const { userId } = req.params;
+      const { startDate, endDate, groupBy } = req.query;
+      const options = {};
+      
+      if (startDate) options.startDate = new Date(startDate);
+      if (endDate) options.endDate = new Date(endDate);
+      if (groupBy) options.groupBy = groupBy;
+
+      const analytics = await analyticsService.getUserUsage(userId, options);
+      res.json(analytics);
+    } catch (error) {
+      console.error("Failed to get user analytics:", error);
+      res.status(500).json({ error: "Failed to get user analytics" });
+    }
+  }
+);
+
+// Get paginated usage data for all users
+app.get(
+  "/api/admin/analytics/users",
+  authenticateToken,
+  creditOperationLimiter,
+  async (req, res) => {
+    if (!req.user.isAdmin) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
+    try {
+      const { 
+        page = 1, 
+        limit = 50, 
+        sortBy = "creditsUsed",
+        sortOrder = "DESC",
+        startDate,
+        endDate,
+        search
+      } = req.query;
+
+      const options = {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        sortBy,
+        sortOrder,
+        searchTerm: search || ""
+      };
+      
+      if (startDate) options.startDate = new Date(startDate);
+      if (endDate) options.endDate = new Date(endDate);
+
+      const analytics = await analyticsService.getAllUsersUsage(options);
+      res.json(analytics);
+    } catch (error) {
+      console.error("Failed to get all users analytics:", error);
+      res.status(500).json({ error: "Failed to get users analytics" });
+    }
+  }
+);
+
+// Export usage data
+app.get(
+  "/api/admin/analytics/export",
+  authenticateToken,
+  strictCreditLimiter,
+  async (req, res) => {
+    if (!req.user.isAdmin) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
+    try {
+      const { format = "csv", userId, startDate, endDate } = req.query;
+      const options = {};
+      
+      if (userId) options.userId = userId;
+      if (startDate) options.startDate = new Date(startDate);
+      if (endDate) options.endDate = new Date(endDate);
+
+      const exportData = await analyticsService.exportUsageData(format, options);
+
+      if (format === "csv") {
+        res.setHeader("Content-Type", "text/csv");
+        res.setHeader("Content-Disposition", `attachment; filename="usage-export-${new Date().toISOString().split('T')[0]}.csv"`);
+        res.send(exportData.csv);
+      } else {
+        res.json(exportData);
+      }
+    } catch (error) {
+      console.error("Failed to export analytics:", error);
+      res.status(500).json({ error: "Failed to export analytics" });
+    }
+  }
+);
 
 // Public Character Routes
 app.get("/api/characters/featured", async (req, res) => {
@@ -1064,19 +1581,13 @@ passport.use(
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
-        console.log(
-          `[PASSPORT_DEBUG] Authenticating user with Google ID: ${profile.id}`
-        );
+        // Authenticating user with Google OAuth
 
         // First, try to find user by Google ID
         let user = await User.findOne({ where: { googleId: profile.id } });
 
         if (user) {
-          console.log(`[PASSPORT_DEBUG] User found by Google ID:`, {
-            userId: user.id,
-            googleId: user.googleId,
-            email: user.email,
-          });
+          // User found by Google ID
           return done(null, user);
         }
 
@@ -1086,15 +1597,7 @@ passport.use(
         });
 
         if (existingUserByEmail) {
-          console.log(
-            `[PASSPORT_DEBUG] Found existing user by email, updating Google ID:`,
-            {
-              userId: existingUserByEmail.id,
-              oldGoogleId: existingUserByEmail.googleId,
-              newGoogleId: profile.id,
-              email: existingUserByEmail.email,
-            }
-          );
+          // Found existing user by email, updating Google ID
 
           // Update the existing user with the real Google ID
           await existingUserByEmail.update({
@@ -1102,14 +1605,12 @@ passport.use(
             displayName: profile.displayName, // Also update display name if provided
           });
 
-          console.log(`[PASSPORT_DEBUG] Successfully updated user Google ID`);
+          // Successfully updated user Google ID
           return done(null, existingUserByEmail);
         }
 
         // If no existing user found, create a new one
-        console.log(
-          `[PASSPORT_DEBUG] Creating new user for Google ID: ${profile.id}`
-        );
+        // Creating new user for Google ID
 
         user = await User.create({
           googleId: profile.id,
@@ -1117,11 +1618,7 @@ passport.use(
           email: profile.emails[0].value,
         });
 
-        console.log(`[PASSPORT_DEBUG] New user created:`, {
-          userId: user.id,
-          googleId: user.googleId,
-          email: user.email,
-        });
+        // New user created successfully
 
         // Add a small delay to ensure database consistency
         await new Promise((resolve) => setTimeout(resolve, 100));
@@ -1134,13 +1631,11 @@ passport.use(
           return done(new Error("Database consistency error"));
         }
 
-        console.log(
-          `[PASSPORT_DEBUG] New user verified in database successfully`
-        );
+        // New user verified in database
 
         done(null, user);
       } catch (err) {
-        console.error(`[PASSPORT_DEBUG] Authentication error:`, err);
+        console.error(`Google OAuth authentication error:`, err);
         done(err);
       }
     }
@@ -1194,14 +1689,7 @@ app.get("/auth/google/callback", (req, res, next) => {
       return res.redirect(`${process.env.FRONTEND_URL}/login?error=no_user`);
     }
 
-    // Enhanced debugging for production issues
-    console.log(`[AUTH_DEBUG] User authenticated:`, {
-      userId: user.id,
-      googleId: user.googleId,
-      email: user.email,
-      hasUsername: !!user.username,
-      timestamp: new Date().toISOString(),
-    });
+    // User authenticated successfully
 
     // Verify user exists in database immediately after authentication
     try {
@@ -1214,14 +1702,9 @@ app.get("/auth/google/callback", (req, res, next) => {
           `${process.env.FRONTEND_URL}/login?error=db_sync_failed`
         );
       }
-      console.log(`[AUTH_DEBUG] User verified in database:`, {
-        dbUserId: dbUser.id,
-        dbGoogleId: dbUser.googleId,
-        createdAt: dbUser.createdAt,
-        updatedAt: dbUser.updatedAt,
-      });
+      // User verified in database
     } catch (dbError) {
-      console.error(`[AUTH_DEBUG] Database verification failed:`, dbError);
+      console.error(`Database verification failed:`, dbError);
       return res.redirect(`${process.env.FRONTEND_URL}/login?error=db_error`);
     }
 
@@ -1229,7 +1712,7 @@ app.get("/auth/google/callback", (req, res, next) => {
       expiresIn: "7d",
     });
 
-    console.log(`[AUTH_DEBUG] JWT token created for user ${user.id}`);
+    // JWT token created
 
     // Check if there's a character redirect in the state
     let redirectToCharacter = null;
@@ -1252,15 +1735,15 @@ app.get("/auth/google/callback", (req, res, next) => {
       if (redirectToCharacter) {
         redirectUrl += `&redirect_to_character=${redirectToCharacter}`;
       }
-      console.log(`[AUTH_DEBUG] Redirecting to username setup: ${redirectUrl}`);
+      // Redirecting to username setup
     } else if (redirectToCharacter) {
       // User has username and wants to go to specific character
       redirectUrl = `${process.env.FRONTEND_URL}/auth-success?token=${token}&redirect_to_character=${redirectToCharacter}`;
-      console.log(`[AUTH_DEBUG] Redirecting to character: ${redirectUrl}`);
+      // Redirecting to character
     } else {
       // Normal auth success flow
       redirectUrl = `${process.env.FRONTEND_URL}/auth-success?token=${token}`;
-      console.log(`[AUTH_DEBUG] Redirecting to auth success: ${redirectUrl}`);
+      // Redirecting to auth success
     }
 
     res.redirect(redirectUrl);
@@ -1342,13 +1825,26 @@ app.post(
     try {
       let characterData;
 
+      // Determine user tier for model selection
+      const userTier = req.user.subscriptionTier || "free";
+      
       // Check if this is a FormData request (multipart) or JSON request
       if (req.file || req.body.name) {
         // FormData request - extract data from form fields
+        const category = req.body.category;
+        
+        // Validate category
+        if (!category || !getAllCategoryIds().includes(category)) {
+          return res.status(400).json({ error: "Invalid category selected" });
+        }
+        
+        // Get the appropriate model based on category and user tier
+        const model = getModelForCategory(category, userTier);
+        
         characterData = {
           name: req.body.name,
           description: req.body.description || "",
-          model: req.body.model,
+          model: model,
           systemPrompt: req.body.systemPrompt,
           isPublic: req.body.isPublic === "true",
           UserId: req.user.id,
@@ -1360,10 +1856,31 @@ app.post(
         }
       } else {
         // JSON request - use request body directly
-        characterData = {
-          ...req.body,
-          UserId: req.user.id,
-        };
+        // Handle both category and model for backward compatibility
+        if (req.body.category) {
+          const category = req.body.category;
+          
+          // Validate category
+          if (!getAllCategoryIds().includes(category)) {
+            return res.status(400).json({ error: "Invalid category selected" });
+          }
+          
+          // Get the appropriate model based on category and user tier
+          const model = getModelForCategory(category, userTier);
+          
+          characterData = {
+            ...req.body,
+            model: model,
+            UserId: req.user.id,
+          };
+          delete characterData.category; // Remove category from data
+        } else {
+          // Legacy support for direct model specification
+          characterData = {
+            ...req.body,
+            UserId: req.user.id,
+          };
+        }
       }
 
       const character = await Character.create(characterData);
@@ -1413,9 +1930,7 @@ app.post(
       const isProUser = await checkUserSubscriptionStatus(req.user);
 
       if (!isProUser) {
-        console.log(
-          `[NEW CONVO VALIDATION] User ${req.user.id} (${req.user.username}) on free tier. Validating creation for char ${req.params.characterId}.`
-        );
+        // Validating free tier character limit
         const existingConversations = await Conversation.findAll({
           where: { UserId: req.user.id },
           attributes: ["CharacterId"], // Only need CharacterId to find unique ones
@@ -1427,10 +1942,7 @@ app.post(
             existingConversations.map((conv) => conv.CharacterId.toString())
           ),
         ];
-        console.log(
-          `[NEW CONVO VALIDATION] User has interacted with unique characters:`,
-          uniqueInteractedCharacterIds
-        );
+        // Checking unique character interactions
 
         const currentCharacterIdToCreateFor = req.params.characterId.toString();
 
@@ -1438,21 +1950,15 @@ app.post(
           uniqueInteractedCharacterIds.length >= 3 &&
           !uniqueInteractedCharacterIds.includes(currentCharacterIdToCreateFor)
         ) {
-          console.log(
-            `[NEW CONVO VALIDATION] DENIED: User has >=3 unique characters and trying to create with new char ${currentCharacterIdToCreateFor}.`
-          );
+          // Character limit exceeded for free tier
           return res.status(403).json({
             error:
               "Upgrade to Pro to start conversations with new characters. You have reached your limit for the free plan.",
           });
         }
-        console.log(
-          `[NEW CONVO VALIDATION] ALLOWED: Conditions for denial not met for char ${currentCharacterIdToCreateFor}.`
-        );
+        // Character access allowed
       } else {
-        console.log(
-          `[NEW CONVO VALIDATION] User ${req.user.id} (${req.user.username}) is on pro tier. Skipping validation.`
-        );
+        // Pro tier user - no character limits
       }
       // END SERVER-SIDE VALIDATION FOR NEW CONVERSATION
 
@@ -1544,7 +2050,15 @@ app.get(
 app.post(
   "/api/conversations/:conversationId/messages",
   authenticateToken,
+  messageLimiter,
+  addCreditContext,
   async (req, res) => {
+    const startTime = Date.now();
+    let userMessage;
+    let estimatedCredits = 0;
+    let actualTokenUsage = null;
+    let tokenUsageRecord;
+
     try {
       const conversation = await Conversation.findOne({
         where: {
@@ -1597,7 +2111,10 @@ app.post(
           .json({ error: "Character not found for conversation" });
       }
 
-      // Get the current path for context (tree-aware)
+      // CREDIT SYSTEM INTEGRATION - Pre-flight credit check
+      const modelProvider = getModelProvider(conversation.Character.model);
+
+      // Get the current path for context first (needed for precise token counting)
       let previousMessages = [];
       let parentMessageId = null;
       let childIndex = 0;
@@ -1622,8 +2139,56 @@ app.post(
         }
       }
 
+      // Use precise token counting with the tokenizer service
+      try {
+        const tokenEstimate = await creditService.estimateMessageCredits(
+          req.body.content,
+          conversation.Character.model,
+          modelProvider,
+          {
+            systemPrompt: conversation.Character.systemPrompt,
+            conversationHistory: previousMessages.map(msg => ({
+              role: msg.role,
+              content: msg.content,
+              attachments: msg.attachments
+            })),
+            attachments: req.body.attachments
+          }
+        );
+
+        // Use the appropriate buffer multiplier based on token counting accuracy
+        const requiredCredits = tokenEstimate.creditsNeeded * tokenEstimate.bufferMultiplier;
+        estimatedCredits = tokenEstimate.creditsNeeded;
+
+        console.log(`Token estimation for ${conversation.Character.model}: ${tokenEstimate.inputTokens} input tokens (method: ${tokenEstimate.tokenCountMethod})`);
+
+        // Check if user has sufficient credits
+        const creditCheck = await creditService.checkCreditBalance(
+          req.user.id,
+          requiredCredits
+        );
+        if (!creditCheck.hasCredits) {
+          return res.status(402).json({
+            error: "Insufficient credits",
+            creditsNeeded: requiredCredits,
+            currentBalance: creditCheck.balance,
+            estimatedCost: tokenEstimate.creditsNeeded,
+            subscriptionTier: creditCheck.subscriptionTier,
+            tokenEstimate: {
+              inputTokens: tokenEstimate.inputTokens,
+              estimatedOutputTokens: tokenEstimate.estimatedOutputTokens,
+              isExact: tokenEstimate.isExact,
+              method: tokenEstimate.tokenCountMethod
+            }
+          });
+        }
+      } catch (pricingError) {
+        console.error("Credit estimation failed:", pricingError);
+        // Continue without credit check if pricing fails (fallback)
+      }
+
       // Save user message with tree structure
-      const userMessage = await Message.create({
+      userMessage = await Message.create({
         content: req.body.content,
         role: "user",
         UserId: req.user.id,
@@ -1687,7 +2252,7 @@ app.post(
 
         // Get AI response with full conversation history
         let aiResponse;
-        const modelProvider = getModelProvider(conversation.Character.model);
+        let aiResponseContent;
 
         if (modelProvider === "anthropic") {
           // Format messages for Claude API
@@ -1734,7 +2299,7 @@ app.post(
           });
 
           try {
-            const response = await anthropic.messages.create({
+            aiResponse = await anthropic.messages.create({
               model: conversation.Character.model,
               max_tokens: 1024,
               messages: formattedMessages,
@@ -1742,14 +2307,20 @@ app.post(
             });
 
             if (
-              !response.content ||
-              !response.content[0] ||
-              !response.content[0].text
+              !aiResponse.content ||
+              !aiResponse.content[0] ||
+              !aiResponse.content[0].text
             ) {
               throw new Error("Invalid response from Claude API");
             }
 
-            aiResponse = response.content[0].text;
+            aiResponseContent = aiResponse.content[0].text;
+
+            // Extract token usage for Claude
+            actualTokenUsage = {
+              inputTokens: aiResponse.usage?.input_tokens || 0,
+              outputTokens: aiResponse.usage?.output_tokens || 0,
+            };
           } catch (claudeError) {
             console.error("Claude API error:", claudeError);
             throw new Error(
@@ -1825,8 +2396,8 @@ app.post(
               // Send the last user message
               const lastMessage = chatHistory[chatHistory.length - 1];
               const result = await chat.sendMessage(lastMessage.parts);
-              const response = await result.response;
-              aiResponse = response.text();
+              aiResponse = await result.response;
+              aiResponseContent = aiResponse.text();
             } else {
               // First message - use generateContent directly
               const userMessage = chatHistory[0];
@@ -1837,14 +2408,23 @@ app.post(
                   temperature: 0.7,
                 },
               });
-              const response = await result.response;
-              aiResponse = response.text();
+              aiResponse = await result.response;
+              aiResponseContent = aiResponse.text();
             }
 
-            if (!aiResponse || aiResponse.trim() === "") {
+            if (!aiResponseContent || aiResponseContent.trim() === "") {
               throw new Error(
                 "Empty response from Google AI - the model may have declined to respond due to content policies"
               );
+            }
+
+            // Extract token usage for Google AI
+            const usageMetadata = aiResponse.usageMetadata;
+            if (usageMetadata) {
+              actualTokenUsage = {
+                inputTokens: usageMetadata.promptTokenCount || 0,
+                outputTokens: usageMetadata.candidatesTokenCount || 0,
+              };
             }
           } catch (googleError) {
             console.error("Google AI error:", googleError);
@@ -1871,18 +2451,26 @@ app.post(
           }
         } else if (modelProvider === "openai") {
           // OpenAI models
-          const response = await openai.chat.completions.create({
+          aiResponse = await openai.chat.completions.create({
             model: conversation.Character.model,
             messages: messageHistory,
           });
-          aiResponse = response.choices[0].message.content;
+          aiResponseContent = aiResponse.choices[0].message.content;
+
+          // Extract token usage for OpenAI
+          if (aiResponse.usage) {
+            actualTokenUsage = {
+              inputTokens: aiResponse.usage.prompt_tokens || 0,
+              outputTokens: aiResponse.usage.completion_tokens || 0,
+            };
+          }
         } else {
           throw new Error(`Unsupported model provider: ${modelProvider}`);
         }
 
         // Save AI message with tree structure
         const aiMessage = await Message.create({
-          content: aiResponse,
+          content: aiResponseContent,
           role: "assistant",
           UserId: req.user.id,
           ConversationId: conversation.id,
@@ -1891,10 +2479,75 @@ app.post(
           childIndex: 0, // AI response is always the first child of user message
         });
 
+        // CREDIT SYSTEM INTEGRATION - Record actual token usage and deduct credits
+        if (actualTokenUsage) {
+          try {
+            // Record token usage
+            const tokenUsageRecord = await creditService.recordTokenUsage({
+              userId: String(req.user.id),
+              conversationId: conversation.id,
+              messageId: aiMessage.id,
+              modelProvider: modelProvider,
+              modelName: conversation.Character.model,
+              inputTokens: actualTokenUsage.inputTokens,
+              outputTokens: actualTokenUsage.outputTokens,
+            });
+
+            // Deduct credits based on actual usage
+            const actualCreditsUsed = parseFloat(tokenUsageRecord.creditsUsed);
+
+            await creditService.deductCredits(
+              String(req.user.id),
+              actualCreditsUsed,
+              {
+                entityType: "message",
+                entityId: aiMessage.id,
+                reason: `AI message generation (${conversation.Character.model})`,
+                ipAddress: req.ip,
+                userAgent: req.get("User-Agent"),
+                metadata: {
+                  conversationId: conversation.id,
+                  characterId: conversation.CharacterId,
+                  inputTokens: actualTokenUsage.inputTokens,
+                  outputTokens: actualTokenUsage.outputTokens,
+                  totalTokens:
+                    actualTokenUsage.inputTokens +
+                    actualTokenUsage.outputTokens,
+                },
+              }
+            );
+
+            console.log(
+              `Credits deducted: ${actualCreditsUsed} for user ${req.user.id}, message ${aiMessage.id}`
+            );
+          } catch (creditError) {
+            console.error("Credit processing failed:", creditError);
+
+            // Create compensation record for failed credit processing
+            try {
+              await creditService.createCompensation(
+                String(req.user.id),
+                estimatedCredits,
+                `Credit processing failed: ${creditError.message}`,
+                aiMessage.id
+              );
+            } catch (compensationError) {
+              console.error(
+                "Failed to create compensation:",
+                compensationError
+              );
+            }
+          }
+        } else {
+          console.warn(
+            `No token usage data available for message ${aiMessage.id}`
+          );
+        }
+
         // Update conversation's current head to the new AI message
         await conversation.update({
           currentHeadId: aiMessage.id,
-          lastMessage: aiResponse.substring(0, 50),
+          lastMessage: aiResponseContent.substring(0, 50),
         });
 
         // If this is the first message exchange, generate a title
@@ -1910,7 +2563,7 @@ app.post(
                 },
                 {
                   role: "user",
-                  content: `User: ${req.body.content}\nAI: ${aiResponse}`,
+                  content: `User: ${req.body.content}\nAI: ${aiResponseContent}`,
                 },
               ],
               max_tokens: 10,
@@ -1922,15 +2575,15 @@ app.post(
               .replace(/^["']|["']$/g, "");
             await conversation.update({
               title: newTitle,
-              lastMessage: aiResponse.substring(0, 50),
+              lastMessage: aiResponseContent.substring(0, 50),
               currentHeadId: aiMessage.id,
             });
           } catch (titleError) {
             console.error("Failed to generate title:", titleError);
             // Fall back to using the first message as title if title generation fails
             await conversation.update({
-              title: aiResponse.substring(0, 30),
-              lastMessage: aiResponse.substring(0, 50),
+              title: aiResponseContent.substring(0, 30),
+              lastMessage: aiResponseContent.substring(0, 50),
               currentHeadId: aiMessage.id,
             });
           }
@@ -1948,6 +2601,12 @@ app.post(
             lastMessage: conversation.lastMessage,
             updatedAt: conversation.updatedAt,
           },
+          creditsUsed:
+            actualTokenUsage && typeof tokenUsageRecord !== "undefined"
+              ? parseFloat(tokenUsageRecord.creditsUsed || 0)
+              : 0,
+          tokenUsage: actualTokenUsage,
+          processingTime: Date.now() - startTime,
         });
       } catch (aiError) {
         console.error("AI Response Error:", aiError);
@@ -2171,6 +2830,12 @@ app.post(
           });
           const response = await result.response;
           aiResponse = response.text();
+        }
+
+        if (!aiResponse || aiResponse.trim() === "") {
+          throw new Error(
+            "Empty response from Google AI - the model may have declined to respond due to content policies"
+          );
         }
       } else if (modelProvider === "openai") {
         const response = await openai.chat.completions.create({
@@ -3039,7 +3704,7 @@ app.post("/api/create-subscription", authenticateToken, async (req, res) => {
         email: req.user.email,
         name: req.user.displayName,
         metadata: {
-          userId: req.user.id,
+          userId: String(req.user.id),
           username: req.user.username || "No username set",
         },
       });
@@ -3389,11 +4054,69 @@ app.delete("/api/profile/delete", authenticateToken, async (req, res) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
+// Graceful shutdown handling
+const gracefulShutdown = (signal) => {
+  console.log(`Received ${signal}. Starting graceful shutdown...`);
+  
+  // Stop cleanup service
+  if (reservationCleanupService) {
+    console.log('Stopping reservation cleanup service...');
+    reservationCleanupService.stop();
+  }
+  
+  // Cleanup streaming tracker
+  if (streamingTokenTracker) {
+    console.log('Cleaning up streaming trackers...');
+    try {
+      streamingTokenTracker.cleanupStaleTrackers(0); // Clean all trackers
+    } catch (error) {
+      console.error('Error cleaning up trackers:', error);
+    }
+  }
+  
+  // Close database connection
+  if (sequelize) {
+    console.log('Closing database connection...');
+    sequelize.close().then(() => {
+      console.log('Graceful shutdown completed');
+      process.exit(0);
+    }).catch((error) => {
+      console.error('Error during shutdown:', error);
+      process.exit(1);
+    });
+  } else {
+    console.log('Graceful shutdown completed');
+    process.exit(0);
+  }
+};
+
+// Handle various shutdown signals
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  gracefulShutdown('uncaughtException');
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  gracefulShutdown('unhandledRejection');
+});
+
 // Add streaming endpoint for messages (SSE)
 app.post(
   "/api/conversations/:conversationId/messages/stream",
   authenticateToken,
+  messageLimiter,
+  addCreditContext,
   async (req, res) => {
+    const startTime = Date.now();
+    let userMessage;
+    let estimatedCredits = 0;
+    let actualTokenUsage = null;
+
     try {
       const conversation = await Conversation.findOne({
         where: {
@@ -3440,6 +4163,74 @@ app.post(
           .json({ error: "Character not found for conversation" });
       }
 
+      // CREDIT RESERVATION SYSTEM - Initialize streaming with credit reservation
+      const modelProvider = getModelProvider(conversation.Character.model);
+
+      // Get conversation context first for precise token counting
+      let previousMessages = [];
+      let parentMessageId = null;
+      let childIndex = 0;
+
+      if (conversation.currentHeadId) {
+        previousMessages = await getMessagePath(conversation.currentHeadId);
+        parentMessageId = conversation.currentHeadId;
+        childIndex = await getNextChildIndex(parentMessageId);
+      } else {
+        previousMessages = await Message.findAll({
+          where: { ConversationId: conversation.id },
+          order: [["createdAt", "ASC"]],
+        });
+        if (previousMessages.length > 0) {
+          parentMessageId = previousMessages[previousMessages.length - 1].id;
+          childIndex = 0;
+        }
+      }
+
+      // Initialize streaming tracker with credit reservation
+      let trackingResult;
+      try {
+        trackingResult = await streamingTokenTracker.startTracking({
+          userId: String(req.user.id),
+          conversationId: conversation.id,
+          messageId: null, // Will be set after user message is created
+          content: req.body.content,
+          model: conversation.Character.model,
+          provider: modelProvider,
+          systemPrompt: conversation.Character.systemPrompt,
+          conversationHistory: previousMessages.map(msg => ({
+            role: msg.role,
+            content: msg.content,
+            attachments: msg.attachments
+          })),
+          attachments: req.body.attachments,
+          operationType: 'chat_completion',
+          expirationMinutes: 15,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent")
+        });
+
+        console.log(`Streaming tracker started: ${trackingResult.trackerId}, credits reserved: ${trackingResult.creditsReserved}`);
+        estimatedCredits = trackingResult.estimatedTokens.input + trackingResult.estimatedTokens.output;
+
+      } catch (reservationError) {
+        console.error("Credit reservation failed for streaming:", reservationError);
+        
+        // Return specific error for insufficient credits
+        if (reservationError.message.includes('Insufficient credits')) {
+          return res.status(402).json({
+            error: "Insufficient credits",
+            message: reservationError.message,
+            subscriptionTier: req.user.subscriptionTier || 'free'
+          });
+        }
+        
+        // For other errors, return generic error
+        return res.status(500).json({
+          error: "Failed to initialize streaming",
+          message: reservationError.message
+        });
+      }
+
       // Set up SSE headers
       res.writeHead(200, {
         "Content-Type": "text/event-stream",
@@ -3455,28 +4246,9 @@ app.post(
       };
 
       try {
-        // Get conversation context (same logic as regular endpoint)
-        let previousMessages = [];
-        let parentMessageId = null;
-        let childIndex = 0;
-
-        if (conversation.currentHeadId) {
-          previousMessages = await getMessagePath(conversation.currentHeadId);
-          parentMessageId = conversation.currentHeadId;
-          childIndex = await getNextChildIndex(parentMessageId);
-        } else {
-          previousMessages = await Message.findAll({
-            where: { ConversationId: conversation.id },
-            order: [["createdAt", "ASC"]],
-          });
-          if (previousMessages.length > 0) {
-            parentMessageId = previousMessages[previousMessages.length - 1].id;
-            childIndex = 0;
-          }
-        }
 
         // Save user message
-        const userMessage = await Message.create({
+        userMessage = await Message.create({
           content: req.body.content,
           role: "user",
           UserId: req.user.id,
@@ -3489,10 +4261,18 @@ app.post(
 
         await conversation.Character.increment("messageCount");
 
-        // Send user message confirmation
+        // Update tracker with message ID (for auditing)
+        // Note: This would require an update method in the tracker, for now we'll track via reservation context
+
+        // Send user message confirmation and reservation info
         sendSSE({
           type: "userMessage",
           message: userMessage,
+          reservationInfo: {
+            trackerId: trackingResult.trackerId,
+            creditsReserved: trackingResult.creditsReserved,
+            expiresAt: trackingResult.expiresAt
+          }
         });
 
         // Prepare message history
@@ -3538,24 +4318,47 @@ app.post(
         messageHistory.push(currentUserMessage);
 
         // Stream AI response based on provider
-        const modelProvider = getModelProvider(conversation.Character.model);
         let aiResponseContent = "";
+        let streamUsageData = null;
 
         if (modelProvider === "openai") {
           const stream = await openai.chat.completions.create({
             model: conversation.Character.model,
             messages: messageHistory,
             stream: true,
+            stream_options: { include_usage: true }, // Request usage data in stream
           });
 
           for await (const chunk of stream) {
             const content = chunk.choices[0]?.delta?.content || "";
             if (content) {
               aiResponseContent += content;
+              
+              // Update streaming tracker with chunk
+              const updateResult = streamingTokenTracker.updateWithChunk(
+                trackingResult.trackerId,
+                content
+              );
+              
               sendSSE({
                 type: "delta",
                 content: content,
+                trackerUpdate: updateResult.success ? {
+                  outputTokensEstimated: updateResult.outputTokensEstimated,
+                  creditsUsed: updateResult.creditsUsed,
+                  creditsRemaining: updateResult.creditsRemaining,
+                  usageRatio: updateResult.usageRatio,
+                  isApproachingLimit: updateResult.isApproachingLimit
+                } : null
               });
+            }
+
+            // Capture usage data from the final chunk
+            if (chunk.usage) {
+              streamUsageData = {
+                inputTokens: chunk.usage.prompt_tokens || 0,
+                outputTokens: chunk.usage.completion_tokens || 0,
+              };
             }
           }
         } else if (modelProvider === "anthropic") {
@@ -3612,10 +4415,33 @@ app.post(
               const content = messageStreamEvent.delta.text || "";
               if (content) {
                 aiResponseContent += content;
+                
+                // Update streaming tracker with chunk
+                const updateResult = streamingTokenTracker.updateWithChunk(
+                  trackingResult.trackerId,
+                  content
+                );
+                
                 sendSSE({
                   type: "delta",
                   content: content,
+                  trackerUpdate: updateResult.success ? {
+                    outputTokensEstimated: updateResult.outputTokensEstimated,
+                    creditsUsed: updateResult.creditsUsed,
+                    creditsRemaining: updateResult.creditsRemaining,
+                    usageRatio: updateResult.usageRatio,
+                    isApproachingLimit: updateResult.isApproachingLimit
+                  } : null
                 });
+              }
+            } else if (messageStreamEvent.type === "message_stop") {
+              // Extract usage data from final message
+              const finalMessage = await stream.finalMessage();
+              if (finalMessage.usage) {
+                streamUsageData = {
+                  inputTokens: finalMessage.usage.input_tokens || 0,
+                  outputTokens: finalMessage.usage.output_tokens || 0,
+                };
               }
             }
           }
@@ -3688,11 +4514,35 @@ app.post(
             const chunkText = chunk.text();
             if (chunkText) {
               aiResponseContent += chunkText;
+              
+              // Update streaming tracker with chunk
+              const updateResult = streamingTokenTracker.updateWithChunk(
+                trackingResult.trackerId,
+                chunkText
+              );
+              
               sendSSE({
                 type: "delta",
                 content: chunkText,
+                trackerUpdate: updateResult.success ? {
+                  outputTokensEstimated: updateResult.outputTokensEstimated,
+                  creditsUsed: updateResult.creditsUsed,
+                  creditsRemaining: updateResult.creditsRemaining,
+                  usageRatio: updateResult.usageRatio,
+                  isApproachingLimit: updateResult.isApproachingLimit
+                } : null
               });
             }
+          }
+
+          // Extract usage data for Google AI
+          const finalResponse = await result.response;
+          if (finalResponse.usageMetadata) {
+            streamUsageData = {
+              inputTokens: finalResponse.usageMetadata.promptTokenCount || 0,
+              outputTokens:
+                finalResponse.usageMetadata.candidatesTokenCount || 0,
+            };
           }
         } else {
           throw new Error(
@@ -3710,6 +4560,81 @@ app.post(
           parentId: userMessage.id,
           childIndex: 0,
         });
+
+        // CREDIT RESERVATION SETTLEMENT - Complete streaming and settle reservation
+        try {
+          console.log(`[STREAMING DEBUG] Starting settlement for tracker: ${trackingResult.trackerId}`);
+          console.log(`[STREAMING DEBUG] AI Response length: ${aiResponseContent.length} chars`);
+          console.log(`[STREAMING DEBUG] Stream usage data available: ${!!streamUsageData}`);
+          
+          // Complete streaming and settle the reservation
+          const completionResult = await streamingTokenTracker.completeStreaming(
+            trackingResult.trackerId,
+            {
+              outputTokens: streamUsageData ? streamUsageData.outputTokens : null,
+              totalText: aiResponseContent,
+              processingTime: Date.now() - startTime
+            }
+          );
+
+          console.log(
+            `[STREAMING DEBUG] Streaming completed: ${completionResult.trackerId}, actual credits used: ${completionResult.credits.used}, refunded: ${completionResult.credits.refunded}`
+          );
+          console.log(`[STREAMING DEBUG] Actual tokens - input: ${completionResult.actualTokens.input}, output: ${completionResult.actualTokens.output}`);
+
+          // Record token usage for analytics
+          // Use the actual token counts from the completion result
+          console.log(`[STREAMING DEBUG] Recording token usage for user: ${req.user.id}, conversation: ${conversation.id}`);
+          const tokenUsageRecord = await creditService.recordTokenUsage({
+            userId: String(req.user.id),
+            conversationId: conversation.id,
+            messageId: aiMessage.id,
+            modelProvider: modelProvider,
+            modelName: conversation.Character.model,
+            inputTokens: completionResult.actualTokens.input,
+            outputTokens: completionResult.actualTokens.output,
+          });
+          console.log(`[STREAMING DEBUG] Token usage recorded successfully: ${tokenUsageRecord.id}`);
+
+          // Send settlement info to client
+          sendSSE({
+            type: "reservationSettled",
+            settlement: {
+              trackerId: completionResult.trackerId,
+              creditsReserved: completionResult.credits.reserved,
+              creditsUsed: completionResult.credits.used,
+              creditsCharged: completionResult.credits.charged,
+              creditsRefunded: completionResult.credits.refunded,
+              actualTokens: completionResult.actualTokens,
+              estimatedTokens: completionResult.estimatedTokens,
+              accuracyMetrics: completionResult.accuracyMetrics,
+              performance: completionResult.performance
+            }
+          });
+
+        } catch (settlementError) {
+          console.error("Credit reservation settlement failed:", settlementError);
+
+          // Try to cancel the reservation to prevent credit loss
+          try {
+            await streamingTokenTracker.cancelStreaming(
+              trackingResult.trackerId,
+              `Settlement failed: ${settlementError.message}`
+            );
+            
+            console.log(`Reservation cancelled due to settlement failure: ${trackingResult.trackerId}`);
+          } catch (cancelError) {
+            console.error("Failed to cancel reservation after settlement error:", cancelError);
+          }
+
+          // Send error info to client
+          sendSSE({
+            type: "reservationError",
+            error: "Credit settlement failed",
+            trackerId: trackingResult.trackerId,
+            details: settlementError.message
+          });
+        }
 
         // Update conversation
         await conversation.update({
@@ -3770,20 +4695,65 @@ app.post(
             lastMessage: conversation.lastMessage,
             updatedAt: conversation.updatedAt,
           },
+          processingTime: Date.now() - startTime,
         });
 
         res.end();
       } catch (streamError) {
         console.error("Streaming error:", streamError);
+
+        // Cancel the credit reservation on streaming error
+        if (trackingResult && trackingResult.trackerId) {
+          try {
+            await streamingTokenTracker.cancelStreaming(
+              trackingResult.trackerId,
+              `Streaming error: ${streamError.message}`
+            );
+            console.log(`Reservation cancelled due to streaming error: ${trackingResult.trackerId}`);
+          } catch (cancelError) {
+            console.error("Failed to cancel reservation after streaming error:", cancelError);
+          }
+        }
+
+        // Clean up user message on error
+        if (userMessage) {
+          try {
+            await userMessage.destroy();
+          } catch (cleanupError) {
+            console.error(
+              "Failed to cleanup user message (streaming):",
+              cleanupError
+            );
+          }
+        }
+
         sendSSE({
           type: "error",
           error: streamError.message || "Failed to generate response",
+          reservationCancelled: trackingResult ? trackingResult.trackerId : null
         });
         res.end();
       }
     } catch (err) {
       console.error("Stream setup error:", err);
-      res.status(500).json({ error: err.message || "Failed to setup stream" });
+      
+      // Cancel reservation if it was created during setup
+      if (trackingResult && trackingResult.trackerId) {
+        try {
+          await streamingTokenTracker.cancelStreaming(
+            trackingResult.trackerId,
+            `Stream setup error: ${err.message}`
+          );
+          console.log(`Reservation cancelled due to setup error: ${trackingResult.trackerId}`);
+        } catch (cancelError) {
+          console.error("Failed to cancel reservation after setup error:", cancelError);
+        }
+      }
+      
+      res.status(500).json({ 
+        error: err.message || "Failed to setup stream",
+        reservationCancelled: trackingResult ? trackingResult.trackerId : null
+      });
     }
   }
 );

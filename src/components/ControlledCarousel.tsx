@@ -176,14 +176,14 @@ const ControlledCarousel: React.FC<ControlledCarouselProps> = ({
             <div className="flex items-center space-x-2">
               <button
                 onClick={goToPrevious}
-                className="p-2 rounded-md transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-zinc-500  bg-zinc-700 hover:bg-zinc-600/80 text-zinc-200 hover:text-white cursor-pointer"
+                className="p-2 rounded-md transition-all duration-300 focus:outline-none border border-zinc-300 dark:border-none focus:ring-1 focus:ring-zinc-300 dark:focus:ring-zinc-500 bg-transparent dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600/80 text-zinc-900 dark:text-zinc-200  dark:hover:text-white  cursor-pointer"
                 aria-label="Previous characters"
               >
                 <FiChevronLeft size={20} />
               </button>
               <button
                 onClick={goToNext}
-                className="p-2 rounded-md transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-zinc-500 bg-zinc-700 hover:bg-zinc-600/80 text-zinc-200 hover:text-white cursor-pointer"
+                className="p-2 rounded-md transition-all duration-300 focus:outline-none border border-zinc-300 dark:border-none focus:ring-1 focus:ring-zinc-300 dark:focus:ring-zinc-500 bg-transparent dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600/80 text-zinc-900 dark:text-zinc-200 dark:hover:text-white cursor-pointer"
                 aria-label="Next characters"
               >
                 <FiChevronRight size={20} />

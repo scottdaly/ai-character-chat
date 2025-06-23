@@ -23,7 +23,15 @@ export default function Admin() {
   return (
     <div className="bg-zinc-900 min-h-screen h-full text-white">
         <div className="flex flex-col p-4 mx-auto max-w-6xl">
-            <h1 className="text-3xl font-bold mb-8">Admin Dashboard</h1>
+            <div className="flex justify-between items-center mb-8">
+              <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+              <a 
+                href="/admin/analytics" 
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+              >
+                View Analytics →
+              </a>
+            </div>
        
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

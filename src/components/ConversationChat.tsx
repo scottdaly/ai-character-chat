@@ -10,6 +10,8 @@ import {
   FiMenu,
   FiEdit3,
   FiTrash2,
+  FiMoreVertical,
+  FiRotateCcw,
 } from "react-icons/fi";
 import { AiFillEdit } from "react-icons/ai";
 import { useAuth } from "../contexts/AuthContext";
@@ -25,11 +27,15 @@ import { MessageAttachment } from "../types";
 import { supportsImages } from "../config/models";
 import Toast from "./Toast";
 import Tooltip from "./Tooltip";
-import ConfirmationModal from "./ConfirmationModal";
+import UniversalModal from "./UniversalModal";
 import { IoRefresh } from "react-icons/io5";
 import { MessageTreeNode } from "../types";
 import MarkdownMessage from "./MarkdownMessage";
 import UserAvatar from "./UserAvatar";
+import { useCredit } from "../contexts/CreditContext";
+import { useData } from "../contexts/DataContext";
+import InsufficientCreditsModal from "./InsufficientCreditsModal";
+import CreditBalance from "./CreditBalance";
 
 // Typewriter effect component for smooth streaming
 const TypewriterText = ({
@@ -96,22 +102,22 @@ const TypewriterText = ({
 const TypingIndicator = () => {
   return (
     <div className="flex flex-col items-start pb-4">
-      <div className="max-w-2xl p-4 rounded-xl bg-zinc-800 text-zinc-100">
+      <div className="max-w-2xl p-4 rounded-xl bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100">
         <div className="flex items-center space-x-2">
           <div className="flex space-x-1">
-            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+            <div className="w-2 h-2 bg-gray-500 dark:bg-gray-400 rounded-full animate-bounce"></div>
             <div
-              className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+              className="w-2 h-2 bg-gray-500 dark:bg-gray-400 rounded-full animate-bounce"
               style={{ animationDelay: "0.1s" }}
             ></div>
             <div
-              className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+              className="w-2 h-2 bg-gray-500 dark:bg-gray-400 rounded-full animate-bounce"
               style={{ animationDelay: "0.2s" }}
             ></div>
           </div>
         </div>
       </div>
-      <span className="text-xs text-gray-400 mt-1 px-2">
+      <span className="text-xs text-gray-500 dark:text-gray-400 mt-1 px-2">
         {new Date().toLocaleTimeString([], {
           hour: "numeric",
           minute: "2-digit",
@@ -177,8 +183,8 @@ const InlineBranchSelector = ({
           disabled={isFirstBranch}
           className={`p-1 rounded flex items-center transition-colors duration-300 ease-in-out ${
             isFirstBranch
-              ? "text-zinc-500"
-              : "text-zinc-200 hover:text-zinc-100 hover:bg-zinc-700/50 cursor-pointer"
+              ? "text-zinc-400 dark:text-zinc-500"
+              : "text-zinc-600 dark:text-zinc-200 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700/50 cursor-pointer"
           }`}
           aria-label="Previous branch"
         >
@@ -186,7 +192,7 @@ const InlineBranchSelector = ({
         </button>
       </Tooltip>
 
-      <span className="text-xs text-zinc-200 min-w-[1rem] text-center">
+      <span className="text-xs text-zinc-600 dark:text-zinc-200 min-w-[1rem] text-center">
         {currentBranchIndex + 1}/{totalBranches}
       </span>
 
@@ -196,8 +202,8 @@ const InlineBranchSelector = ({
           disabled={isLastBranch}
           className={`p-1 rounded flex items-center transition-colors duration-300 ease-in-out ${
             isLastBranch
-              ? "text-zinc-500"
-              : "text-zinc-200 hover:text-zinc-100 hover:bg-zinc-700/50 cursor-pointer"
+              ? "text-zinc-400 dark:text-zinc-500"
+              : "text-zinc-600 dark:text-zinc-200 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700/50 cursor-pointer"
           }`}
           aria-label="Next branch"
         >
@@ -212,6 +218,7 @@ export default function ConversationChat() {
   const { characterId, conversationId } = useParams();
   const navigate = useNavigate();
   const { apiFetch, subscriptionTier } = useAuth();
+  const { refreshBalance } = useCredit();
   const { isSidebarOpen, setIsSidebarOpen } = useSidebar();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -270,6 +277,15 @@ export default function ConversationChat() {
 
   // Delete conversation confirmation state
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+
+  // Credit modal state
+  const [showCreditModal, setShowCreditModal] = useState(false);
+  const [creditError, setCreditError] = useState<{
+    creditsNeeded: number;
+    currentBalance: number;
+    estimatedCost: number;
+    subscriptionTier?: string;
+  } | null>(null);
 
   const {
     conversations: userConversations,
@@ -995,7 +1011,25 @@ export default function ConversationChat() {
       setNewMessage(messageContent);
       setSelectedImages(messageAttachments);
 
-      // Show user-friendly error message
+      // Handle credit-specific errors
+      if (typeof err === "object" && err !== null && "error" in err) {
+        const creditErr = err as any;
+        if (creditErr.error === "Insufficient credits") {
+          setCreditError({
+            creditsNeeded: creditErr.creditsNeeded || 0,
+            currentBalance: creditErr.currentBalance || 0,
+            estimatedCost: creditErr.estimatedCost || 0,
+            subscriptionTier: creditErr.subscriptionTier,
+          });
+          setShowCreditModal(true);
+
+          // Refresh credit balance to ensure accuracy
+          refreshBalance();
+          return;
+        }
+      }
+
+      // Show user-friendly error message for non-credit errors
       const errorMessage =
         err instanceof Error ? err.message : "Failed to send message";
 
@@ -1195,7 +1229,10 @@ export default function ConversationChat() {
   useEffect(() => {
     if (messagesError && !accessError) {
       setToast({
-        message: messagesError.message || "Failed to load messages",
+        message:
+          typeof messagesError === "string"
+            ? messagesError
+            : "Failed to load messages",
         type: "error",
       });
     }
@@ -1206,14 +1243,17 @@ export default function ConversationChat() {
       {((isAccessDenied && accessError) ||
         (characterAccess && !characterAccess.hasAccess)) && (
         <div className="flex p-6 w-full">
-          <div className="flex flex-row items-center justify-between p-6 border border-cyan-300/10 bg-gradient-to-r from-cyan-500/10 to-cyan-400/10 rounded-xl w-full">
+          <div className="flex flex-row items-center justify-between p-6 border border-cyan-300/20 dark:border-cyan-300/10 bg-gradient-to-r from-cyan-500/10 to-cyan-400/10 dark:from-cyan-500/10 dark:to-cyan-400/10 rounded-xl w-full">
             <div className="max-w-4xl flex items-start gap-4">
-              <FiAlertTriangle size={32} className="text-cyan-100" />
+              <FiAlertTriangle
+                size={32}
+                className="text-cyan-600 dark:text-cyan-100"
+              />
               <div className="">
-                <p className="font-semibold text-xl text-white">
+                <p className="font-semibold text-xl text-zinc-900 dark:text-white">
                   {accessError?.message || characterAccess?.reason}
                 </p>
-                <p className="text-cyan-100/80 text-sm">
+                <p className="text-cyan-800/80 dark:text-cyan-100/80 text-sm">
                   You can chat with your 3 most recent characters on the free
                   plan.{" "}
                   <span className="">
@@ -1226,7 +1266,7 @@ export default function ConversationChat() {
             </div>
             <Link
               to="/plans"
-              className="inline-block mt-2 bg-zinc-100 hover:bg-white hover:scale-104 text-black font-medium px-4 py-2 rounded-lg transition-all duration-300 ease-in-out"
+              className="inline-block mt-2 bg-zinc-800 hover:bg-black text-white dark:bg-zinc-100 dark:hover:bg-white dark:text-black font-medium px-4 py-2 rounded-lg transition-all duration-300 ease-in-out"
             >
               Upgrade to Pro
             </Link>
@@ -1238,29 +1278,54 @@ export default function ConversationChat() {
         id="messages-container"
         className="flex-1 space-y-4 w-full overflow-y-auto chat-container relative"
       >
-        <div className="top-0 flex sticky items-center justify-between w-full bg-mainBG border-b border-mainBG-lighter xl:border-none xl:bg-transparent z-10 py-2 px-1">
-          <div>
+        <div className="top-0 flex sticky items-center justify-between w-full bg-white dark:bg-mainBG border-b border-zinc-200 dark:border-mainBG-lighter xl:border-none xl:bg-transparent z-10 py-2 px-1">
+          <div className="flex items-center gap-2">
             {/* Mobile Sidebar Toggle Button */}
             {!isSidebarOpen && (
               <button
                 onClick={() => setIsSidebarOpen(true)}
-                className="md:hidden z-50 p-2 rounded-lg text-zinc-200 hover:bg-black/50 hover:text-white transition-all duration-300 ease-in-out"
+                className="md:hidden z-50 p-2 rounded-lg text-zinc-700 dark:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-black/50 hover:text-zinc-900 dark:hover:text-white transition-all duration-300 ease-in-out"
               >
                 <FiMenu size={24} />
               </button>
             )}
+
+            {/* Mobile Credit Balance */}
+            <div className="sm:hidden">
+              <CreditBalance
+                size="sm"
+                variant="inline"
+                showRefresh={false}
+                showUpgradeButton={false}
+                showWarning={false}
+              />
+            </div>
           </div>
 
-          {/* Header Right Side - Avatar and Options */}
-          <div className="flex items-center gap-2 px-3">
+          {/* Spacer for center alignment */}
+          <div className="flex-1"></div>
+
+          {/* Header Right Side - Credit Balance, Avatar and Options */}
+          <div className="flex items-center gap-3 px-3">
+            {/* Credit Balance (hidden on mobile) */}
+            <div className="hidden sm:block">
+              <CreditBalance
+                size="sm"
+                variant="inline"
+                showRefresh={false}
+                showUpgradeButton={false}
+                showWarning={false}
+              />
+            </div>
+
             {/* Header Options Button with Dropdown */}
             <div className="relative">
               <button
                 onClick={handleHeaderDropdownToggle}
-                className="flex flex-row items-center gap-2 p-2 hover:bg-zinc-700/50 group/options rounded-lg transition-all duration-300 ease-in-out"
+                className="flex flex-row items-center gap-2 p-2 hover:bg-zinc-200 dark:hover:bg-zinc-700/50 group/options rounded-lg transition-all duration-300 ease-in-out"
               >
-                <HiDotsVertical
-                  className="text-zinc-200 group-hover/options:text-zinc-100 transition-all duration-300 ease-in-out"
+                <FiMoreVertical
+                  className="text-zinc-700 dark:text-zinc-200 group-hover/options:text-zinc-900 dark:group-hover/options:text-zinc-100 transition-all duration-300 ease-in-out"
                   size={20}
                 />
               </button>
@@ -1269,18 +1334,18 @@ export default function ConversationChat() {
               {isHeaderDropdownOpen && !isNewConversation && (
                 <div
                   ref={headerDropdownRef}
-                  className="absolute right-0 top-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-lg py-1 z-[60] min-w-[140px] px-1"
+                  className="absolute right-0 top-full mt-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg py-1 z-[60] min-w-[140px] px-1"
                 >
                   <button
                     onClick={handleRenameConversation}
-                    className="w-full text-left px-3 py-2 rounded-md text-sm text-gray-300 hover:bg-zinc-700/60 hover:text-white flex items-center gap-2"
+                    className="w-full text-left px-3 py-2 rounded-md text-sm text-zinc-700 dark:text-gray-300 hover:bg-zinc-100 dark:hover:bg-zinc-700/60 hover:text-zinc-900 dark:hover:text-white flex items-center gap-2"
                   >
                     <FiEdit3 className="h-3 w-3" />
                     Rename
                   </button>
                   <button
                     onClick={handleDeleteConversation}
-                    className="w-full text-left px-3 py-2 rounded-md text-sm text-red-300 hover:bg-red-500/15 flex items-center gap-2"
+                    className="w-full text-left px-3 py-2 rounded-md text-sm text-red-600 dark:text-red-300 hover:bg-red-500/10 dark:hover:bg-red-500/15 flex items-center gap-2"
                   >
                     <FiTrash2 className="h-3 w-3" />
                     Delete
@@ -1297,13 +1362,13 @@ export default function ConversationChat() {
             !messagesLoading &&
             !isAccessDenied &&
             (characterAccess === null || characterAccess.hasAccess) && (
-              <div className="flex items-center justify-center h-full text-gray-400">
+              <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
                 {isNewConversation ? (
-                  <p className="text-gray-400 text-center">
+                  <p className="text-center text-gray-500 dark:text-gray-400">
                     Type your first message to start the conversation
                   </p>
                 ) : (
-                  <p className="text-gray-400 text-center">
+                  <p className="text-center text-gray-500 dark:text-gray-400">
                     No messages in this conversation
                   </p>
                 )}
@@ -1315,7 +1380,7 @@ export default function ConversationChat() {
               ref={index === messages.length - 1 ? latestMessageRef : null}
               className={`group flex flex-col ${
                 message.role === "user" ? "items-end" : "items-start"
-              } space-y-2`}
+              }`}
             >
               {/* Show attachments outside the message bubble */}
               {message.attachments && message.attachments.length > 0 && (
@@ -1347,8 +1412,8 @@ export default function ConversationChat() {
                 <div
                   className={`relative max-w-2xl rounded-xl leading-relaxed peer ${
                     message.role === "user"
-                      ? "px-4 py-3 bg-zinc-700/70 text-white"
-                      : "text-zinc-100 pb-0.5"
+                      ? "px-4 py-3 mb-0.5 bg-zinc-100 dark:bg-zinc-700/70 text-zinc-900 dark:text-white"
+                      : "text-zinc-900 dark:text-zinc-100 pb-1.5"
                   }
                   ${
                     message.attachments &&
@@ -1371,12 +1436,22 @@ export default function ConversationChat() {
                             handleCancelEdit();
                           }
                         }}
-                        className="w-full bg-zinc-800 text-white p-2 rounded border border-zinc-600 focus:border-zinc-500 focus:outline-none resize-none"
+                        className="w-full bg-transparent text-zinc-900 dark:text-white p-2 rounded border border-zinc-100 dark:border-zinc-600 focus:border-zinc-200 dark:focus:border-zinc-500 focus:outline-none resize-none"
                         rows={3}
                         autoFocus
                       />
                       <div className="flex justify-between items-center">
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 items-center">
+                          <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                            Enter to save • Esc to cancel
+                          </span>
+                          <button
+                            onClick={handleCancelEdit}
+                            disabled={messagesLoading || isEditLoading}
+                            className="px-3 py-1 bg-zinc-200 dark:bg-zinc-600 hover:bg-zinc-300 dark:hover:bg-zinc-700 disabled:bg-zinc-100 dark:disabled:bg-zinc-500 disabled:cursor-not-allowed text-zinc-800 dark:text-white rounded text-sm transition-colors"
+                          >
+                            Cancel
+                          </button>
                           <button
                             onClick={() => handleSaveEdit(message.id)}
                             disabled={
@@ -1388,22 +1463,12 @@ export default function ConversationChat() {
                           >
                             {isEditLoading ? "Saving..." : "Save"}
                           </button>
-                          <button
-                            onClick={handleCancelEdit}
-                            disabled={messagesLoading || isEditLoading}
-                            className="px-3 py-1 bg-zinc-600 hover:bg-zinc-700 disabled:bg-zinc-500 disabled:cursor-not-allowed text-white rounded text-sm transition-colors"
-                          >
-                            Cancel
-                          </button>
                         </div>
-                        <span className="text-xs text-zinc-400">
-                          Enter to save • Esc to cancel
-                        </span>
                       </div>
                     </div>
                   ) : message.role === "assistant" ? (
                     regeneratingMessageId === message.id ? (
-                      <div className="flex items-center gap-3 text-blue-400 italic">
+                      <div className="flex items-center gap-3 text-blue-500 dark:text-blue-400 italic">
                         <IoRefresh className="h-4 w-4 animate-spin" />
                         <span>Regenerating response...</span>
                       </div>
@@ -1421,11 +1486,11 @@ export default function ConversationChat() {
 
               <div className="flex flex-row justify-between w-full">
                 {message.role === "assistant" ? (
-                  <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out flex items-center justify-center flex-row gap-2 bg-zinc-700/50 border border-zinc-700 rounded-lg px-1">
+                  <div className="opacity-0 group-hover:opacity-100 gap-1 transition-opacity duration-200 ease-in-out flex items-center justify-center flex-row bg-zinc-100/50 dark:bg-zinc-700/50 border border-zinc-300 dark:border-zinc-700 rounded-lg p-0.5">
                     <Tooltip text="Copy message" offsetSize="large">
                       <button
                         onClick={() => handleCopyMessage(message.content)}
-                        className="text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700 py-2 px-2 rounded-lg flex items-center gap-2 disabled:opacity-50 cursor-pointer transition-colors duration-300 ease-in-out group/copy"
+                        className="text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700 p-1.5 rounded-md flex items-center gap-2 disabled:opacity-50 cursor-pointer transition-colors duration-300 ease-in-out group/copy"
                         aria-label="Copy message"
                       >
                         <FiCopy className="h-4 w-4 transition-transform duration-300 ease-in-out group-hover/copy:scale-110" />
@@ -1446,10 +1511,10 @@ export default function ConversationChat() {
                           isEditLoading ||
                           regeneratingMessageId !== null
                         }
-                        className={`py-2 px-2 rounded-lg flex items-center gap-2 disabled:opacity-50 transition-colors duration-300 ease-in-out group/regenerate ${
+                        className={`p-1.5 rounded-md flex items-center gap-2 disabled:opacity-50 transition-colors duration-300 ease-in-out group/regenerate ${
                           regeneratingMessageId === message.id
-                            ? "text-blue-400 bg-zinc-700 cursor-not-allowed"
-                            : "text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700 cursor-pointer"
+                            ? "text-blue-500 dark:text-blue-400 bg-zinc-200 dark:bg-zinc-700 cursor-not-allowed"
+                            : "text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700 cursor-pointer"
                         }`}
                         aria-label={
                           regeneratingMessageId === message.id
@@ -1471,7 +1536,7 @@ export default function ConversationChat() {
                   <div></div>
                 )}
                 <span
-                  className={`opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out text-xs text-zinc-400 ${
+                  className={`opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out text-xs text-zinc-500 dark:text-zinc-400 ${
                     message.role === "user"
                       ? "px-2 flex flex-row gap-2 justify-end items-center"
                       : ""
@@ -1488,9 +1553,9 @@ export default function ConversationChat() {
                           editingMessageId !== null ||
                           isEditLoading
                         }
-                        className="text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700/50 px-1.5 rounded flex items-center gap-2 disabled:opacity-50 cursor-pointer transition-colors duration-300 ease-in-out group/edit"
+                        className="text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-700/50 p-1 rounded flex items-center gap-2 disabled:opacity-50 cursor-pointer transition-colors duration-300 ease-in-out group/edit"
                       >
-                        <AiFillEdit className="h-4 w-4 transition-transform duration-300 ease-in-out group-hover/edit:scale-110" />
+                        <FiEdit3 className="h-4 w-4 transition-transform duration-300 ease-in-out group-hover/edit:scale-110" />
                       </button>
                     </Tooltip>
                   )}
@@ -1518,7 +1583,7 @@ export default function ConversationChat() {
         <div className="absolute bottom-20 right-8 z-10">
           <button
             onClick={scrollToBottom}
-            className="bg-zinc-800 hover:bg-zinc-700 text-white rounded-full p-3 shadow-lg border border-zinc-600 transition-all duration-200 flex items-center gap-2"
+            className="bg-white dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-900 dark:text-white rounded-full p-3 shadow-lg border border-zinc-300 dark:border-zinc-600 transition-all duration-200 flex items-center gap-2"
             title="Scroll to bottom"
           >
             <svg
@@ -1543,7 +1608,7 @@ export default function ConversationChat() {
         <div className="flex flex-col items-center justify-center w-full">
           <div className="flex gap-2 max-w-4xl w-full">
             <div
-              className="flex flex-1 flex-col px-2 py-2 gap-2 w-full bg-mainBG-lighter border border-mainBG-lightest rounded-lg focus-within:border-zinc-400/40 message-scrollbar cursor-text"
+              className="flex flex-1 flex-col px-2 py-2 gap-2 w-full bg-white dark:bg-mainBG-lighter shadow-md border border-zinc-200 dark:border-mainBG-lightest rounded-lg focus-within:border-zinc-500 dark:focus-within:border-zinc-400/40 message-scrollbar cursor-text"
               onClick={(e) => {
                 // Check if the clicked element is a button or inside a button
                 const target = e.target as HTMLElement;
@@ -1557,11 +1622,11 @@ export default function ConversationChat() {
             >
               {/* Image preview area */}
               {selectedImages.length > 0 && (
-                <div className="flex flex-wrap gap-2 p-2 border-b border-zinc-700">
+                <div className="flex flex-wrap gap-2 p-2 border-b border-zinc-300 dark:border-zinc-700">
                   {selectedImages.map((image, index) => (
                     <div
                       key={index}
-                      className="relative border border-zinc-700 rounded-lg"
+                      className="relative border border-zinc-300 dark:border-zinc-700 rounded-lg"
                     >
                       <img
                         src={image.data}
@@ -1574,7 +1639,7 @@ export default function ConversationChat() {
                           removeImage(index);
                         }}
                         title="Remove image"
-                        className="absolute -top-2 -right-2 flex bg-zinc-700 border border-zinc-600 hover:bg-zinc-600 text-white rounded-full w-6 h-6 items-center justify-center text-xs cursor-pointer transition-colors duration-300 ease-in-out"
+                        className="absolute -top-2 -right-2 flex bg-zinc-200 dark:bg-zinc-700 border border-zinc-300 dark:border-zinc-600 hover:bg-zinc-300 dark:hover:bg-zinc-600 text-zinc-800 dark:text-white rounded-full w-6 h-6 items-center justify-center text-xs cursor-pointer transition-colors duration-300 ease-in-out"
                       >
                         <FiX size={12} />
                       </button>
@@ -1601,7 +1666,7 @@ export default function ConversationChat() {
                     ? "Type your message or upload images..."
                     : "Type your message..."
                 }
-                className="w-full px-1 text-zinc-100 placeholder:text-zinc-400 focus:outline-none resize-none bg-transparent border-none min-h-[24px] max-h-[150px] overflow-y-auto"
+                className="w-full px-1 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-500 dark:placeholder:text-zinc-400 focus:outline-none resize-none bg-transparent border-none min-h-[24px] max-h-[150px] overflow-y-auto"
                 disabled={
                   messagesLoading ||
                   isEditLoading ||
@@ -1627,7 +1692,7 @@ export default function ConversationChat() {
                         className="hidden"
                       />
                       <button
-                        className="flex items-center text-zinc-200 hover:text-white hover:bg-zinc-800 border border-zinc-700 hover:border-zinc-800 px-1.5 py-1.5 rounded-lg  gap-2 disabled:opacity-50 cursor-pointer transition-colors duration-300 ease-in-out group/image-upload"
+                        className="flex items-center text-zinc-700 dark:text-zinc-200 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-800 px-1.5 py-1.5 rounded-lg  gap-2 disabled:opacity-50 cursor-pointer transition-colors duration-300 ease-in-out group/image-upload"
                         onClick={(e) => {
                           e.stopPropagation();
                           fileInputRef.current?.click();
@@ -1645,7 +1710,7 @@ export default function ConversationChat() {
                     e.stopPropagation();
                     handleSend();
                   }}
-                  className="bg-zinc-700 hover:bg-zinc-600/70 text-zinc-100 px-3 py-3 rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:hover:bg-zinc-700 disabled:hover:border-zinc-500 disabled:cursor-text cursor-pointer transition-colors duration-300 ease-in-out group/send disabled:group/send:cursor-text"
+                  className="bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300/70 dark:hover:bg-zinc-600/70 text-zinc-800 dark:text-zinc-100 px-3 py-3 rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:hover:bg-zinc-200 dark:disabled:hover:bg-zinc-700 disabled:hover:border-zinc-500 disabled:cursor-text cursor-pointer transition-colors duration-300 ease-in-out group/send disabled:group/send:cursor-text"
                   title="Send message"
                   disabled={
                     messagesLoading ||
@@ -1687,16 +1752,16 @@ export default function ConversationChat() {
           }}
         >
           <div
-            className="bg-zinc-800 border border-zinc-700 rounded-lg p-6 w-full max-w-md mx-4"
+            className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg p-6 w-full max-w-md mx-4"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-semibold text-white">
+              <h3 className="text-xl font-semibold text-zinc-900 dark:text-white">
                 Rename Conversation
               </h3>
               <button
                 onClick={handleRenameCancel}
-                className="text-gray-400 hover:text-white transition-colors cursor-pointer"
+                className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors cursor-pointer"
               >
                 <FiX className="w-5 h-5" />
               </button>
@@ -1714,7 +1779,7 @@ export default function ConversationChat() {
                     handleRenameCancel();
                   }
                 }}
-                className="w-full bg-zinc-700 text-white px-3 py-3 rounded-lg border border-zinc-600 focus:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-white px-3 py-3 rounded-lg border border-zinc-300 dark:border-zinc-600 focus:border-blue-500 dark:focus:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Enter conversation title"
                 autoFocus
               />
@@ -1723,7 +1788,7 @@ export default function ConversationChat() {
             <div className="flex justify-end gap-3">
               <button
                 onClick={handleRenameCancel}
-                className="px-4 py-2 rounded-lg border border-zinc-700 bg-transparent text-gray-300 hover:text-white hover:bg-zinc-700 cursor-pointer transition-all duration-300 ease-in-out"
+                className="px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-700 cursor-pointer transition-all duration-300 ease-in-out"
               >
                 Cancel
               </button>
@@ -1740,12 +1805,46 @@ export default function ConversationChat() {
       )}
 
       {/* Delete Conversation Confirmation Modal */}
-      <ConfirmationModal
+      <UniversalModal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
-        onConfirm={handleConfirmDelete}
         title="Delete Conversation"
-        message="Are you sure you want to delete this conversation? This action cannot be undone."
+        icon="warning"
+        buttons={[
+          {
+            text: "Cancel",
+            onClick: () => setIsDeleteModalOpen(false),
+            variant: "secondary",
+          },
+          {
+            text: "Delete",
+            onClick: handleConfirmDelete,
+            variant: "danger",
+          },
+        ]}
+      >
+        <p className="text-gray-700 dark:text-gray-300">
+          Are you sure you want to delete this conversation? This action cannot
+          be undone.
+        </p>
+      </UniversalModal>
+
+      {/* Insufficient Credits Modal */}
+      <InsufficientCreditsModal
+        isOpen={showCreditModal}
+        onClose={() => {
+          setShowCreditModal(false);
+          setCreditError(null);
+        }}
+        creditsNeeded={creditError?.creditsNeeded}
+        currentBalance={creditError?.currentBalance}
+        estimatedCost={creditError?.estimatedCost}
+        subscriptionTier={creditError?.subscriptionTier}
+        context={{
+          action: "send message",
+          model: characterModel,
+          characterName: character?.name || conversation?.Character?.name,
+        }}
       />
     </div>
   );
