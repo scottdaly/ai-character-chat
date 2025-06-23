@@ -1,16 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { 
-  Search, 
-  ChevronLeft, 
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
+import {
+  Search,
+  ChevronLeft,
   ChevronRight,
   User,
-  Activity,
-  DollarSign,
-  Calendar,
-  ArrowUpDown
-} from 'lucide-react';
+  ArrowUpDown,
+} from "lucide-react";
 
 interface UserUsage {
   userId: string;
@@ -56,9 +53,9 @@ const AdminUsersList: React.FC = () => {
     total: 0,
     totalPages: 0,
   });
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState('creditsUsed');
-  const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortBy, setSortBy] = useState("creditsUsed");
+  const [sortOrder, setSortOrder] = useState<"ASC" | "DESC">("DESC");
 
   useEffect(() => {
     fetchUsers();
@@ -75,17 +72,17 @@ const AdminUsersList: React.FC = () => {
       });
 
       if (searchTerm) {
-        params.append('search', searchTerm);
+        params.append("search", searchTerm);
       }
 
       const data = await apiFetch<UsersResponse>(
         `/api/admin/analytics/users?${params}`
       );
-      
+
       setUsers(data.data);
       setPagination(data.pagination);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setLoading(false);
     }
@@ -99,25 +96,25 @@ const AdminUsersList: React.FC = () => {
 
   const toggleSort = (field: string) => {
     if (sortBy === field) {
-      setSortOrder(sortOrder === 'DESC' ? 'ASC' : 'DESC');
+      setSortOrder(sortOrder === "DESC" ? "ASC" : "DESC");
     } else {
       setSortBy(field);
-      setSortOrder('DESC');
+      setSortOrder("DESC");
     }
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
     });
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
       minimumFractionDigits: 4,
     }).format(amount);
   };
@@ -170,18 +167,18 @@ const AdminUsersList: React.FC = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   User
                 </th>
-                <th 
+                <th
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-700 dark:hover:text-gray-200"
-                  onClick={() => toggleSort('requestCount')}
+                  onClick={() => toggleSort("requestCount")}
                 >
                   <div className="flex items-center">
                     Requests
                     <ArrowUpDown className="w-4 h-4 ml-1" />
                   </div>
                 </th>
-                <th 
+                <th
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-700 dark:hover:text-gray-200"
-                  onClick={() => toggleSort('creditsUsed')}
+                  onClick={() => toggleSort("creditsUsed")}
                 >
                   <div className="flex items-center">
                     Credits Used
@@ -201,10 +198,12 @@ const AdminUsersList: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {users.map((user) => (
-                <tr 
-                  key={user.userId} 
+                <tr
+                  key={user.userId}
                   className="hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
-                  onClick={() => navigate(`/admin/analytics/users/${user.userId}`)}
+                  onClick={() =>
+                    navigate(`/admin/analytics/users/${user.userId}`)
+                  }
                 >
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
@@ -216,7 +215,9 @@ const AdminUsersList: React.FC = () => {
                           {user.user.email}
                         </div>
                         <div className="text-sm text-gray-500 dark:text-gray-400">
-                          {user.user.username ? `@${user.user.username}` : 'No username'}
+                          {user.user.username
+                            ? `@${user.user.username}`
+                            : "No username"}
                         </div>
                       </div>
                     </div>
@@ -226,22 +227,34 @@ const AdminUsersList: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                     <div>
-                      <div>{Math.ceil(user.usage.creditsUsed).toLocaleString()}</div>
+                      <div>
+                        {Math.ceil(user.usage.creditsUsed).toLocaleString()}
+                      </div>
                       <div className="text-xs text-gray-500 dark:text-gray-400">
-                        Actual: {user.usage.creditsUsed.toFixed(4)} ({formatCurrency(user.usage.totalCostUsd)})
+                        Actual: {user.usage.creditsUsed.toFixed(4)} (
+                        {formatCurrency(user.usage.totalCostUsd)})
                       </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                     <div>
-                      <div className="font-medium">{Math.floor(user.creditBalance.current).toLocaleString()}</div>
+                      <div className="font-medium">
+                        {Math.floor(
+                          user.creditBalance.current
+                        ).toLocaleString()}
+                      </div>
                       <div className="text-xs text-gray-500 dark:text-gray-400">
-                        Lifetime: {Math.ceil(user.creditBalance.lifetime).toLocaleString()}
+                        Lifetime:{" "}
+                        {Math.ceil(
+                          user.creditBalance.lifetime
+                        ).toLocaleString()}
                       </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                    {user.usage.lastActivity ? formatDate(user.usage.lastActivity) : 'Never'}
+                    {user.usage.lastActivity
+                      ? formatDate(user.usage.lastActivity)
+                      : "Never"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <button
@@ -265,22 +278,25 @@ const AdminUsersList: React.FC = () => {
           <div className="flex-1 flex justify-between items-center">
             <div>
               <p className="text-sm text-gray-700 dark:text-gray-300">
-                Showing{' '}
+                Showing{" "}
                 <span className="font-medium">
                   {(pagination.page - 1) * pagination.limit + 1}
-                </span>{' '}
-                to{' '}
+                </span>{" "}
+                to{" "}
                 <span className="font-medium">
-                  {Math.min(pagination.page * pagination.limit, pagination.total)}
-                </span>{' '}
-                of{' '}
-                <span className="font-medium">{pagination.total}</span>{' '}
-                users
+                  {Math.min(
+                    pagination.page * pagination.limit,
+                    pagination.total
+                  )}
+                </span>{" "}
+                of <span className="font-medium">{pagination.total}</span> users
               </p>
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => setPagination({ ...pagination, page: pagination.page - 1 })}
+                onClick={() =>
+                  setPagination({ ...pagination, page: pagination.page - 1 })
+                }
                 disabled={pagination.page === 1}
                 className="relative inline-flex items-center px-4 py-2 text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -288,7 +304,9 @@ const AdminUsersList: React.FC = () => {
                 Previous
               </button>
               <button
-                onClick={() => setPagination({ ...pagination, page: pagination.page + 1 })}
+                onClick={() =>
+                  setPagination({ ...pagination, page: pagination.page + 1 })
+                }
                 disabled={pagination.page === pagination.totalPages}
                 className="relative inline-flex items-center px-4 py-2 text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >

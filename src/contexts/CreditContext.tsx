@@ -33,7 +33,7 @@ interface CreditUsageItem {
 interface CreditReservation {
   id: string;
   creditsReserved: number;
-  type: 'streaming' | 'batch' | 'preprocessing' | 'manual';
+  type: "streaming" | "batch" | "preprocessing" | "manual";
   context?: {
     model?: string;
     provider?: string;
@@ -105,7 +105,6 @@ interface CreditContextType {
 
   // Reservations
   reservations: CreditReservation[];
-  isLoadingReservations: boolean;
   totalReserved: number;
   availableBalance: number | null;
 
@@ -145,7 +144,6 @@ const CreditContext = createContext<CreditContextType>({
   usageStats: null,
   isLoadingUsage: false,
   reservations: [],
-  isLoadingReservations: false,
   totalReserved: 0,
   availableBalance: null,
   error: null,
@@ -167,7 +165,7 @@ const CreditContext = createContext<CreditContextType>({
 });
 
 export function CreditProvider({ children }: { children: React.ReactNode }) {
-  const { user, apiFetch, subscriptionTier } = useAuth();
+  const { user, apiFetch } = useAuth();
 
   // Core state
   const [balance, setBalance] = useState<number | null>(null);
@@ -180,7 +178,6 @@ export function CreditProvider({ children }: { children: React.ReactNode }) {
 
   // Reservations
   const [reservations, setReservations] = useState<CreditReservation[]>([]);
-  const [isLoadingReservations, setIsLoadingReservations] = useState(false);
 
   // Error handling
   const [error, setError] = useState<CreditError | null>(null);
@@ -242,9 +239,11 @@ export function CreditProvider({ children }: { children: React.ReactNode }) {
         try {
           const parsedReservations = JSON.parse(cachedReservations);
           // Filter out expired reservations
-          const activeReservations = parsedReservations.filter((r: CreditReservation) => {
-            return new Date(r.expiresAt) > new Date();
-          });
+          const activeReservations = parsedReservations.filter(
+            (r: CreditReservation) => {
+              return new Date(r.expiresAt) > new Date();
+            }
+          );
           setReservations(activeReservations);
         } catch (e) {
           console.warn("Failed to parse cached reservations:", e);
@@ -367,55 +366,76 @@ export function CreditProvider({ children }: { children: React.ReactNode }) {
   }, [user?.id, refreshBalance]);
 
   // Reservation management
-  const addReservation = useCallback((reservation: CreditReservation) => {
-    setReservations(prev => {
-      const updated = [...prev, reservation];
-      if (user?.id) {
-        localStorage.setItem(CACHE_KEYS.reservations, JSON.stringify(updated));
-      }
-      return updated;
-    });
-  }, [user?.id]);
-
-  const updateReservation = useCallback((reservationId: string, update: ReservationUpdate) => {
-    setReservations(prev => {
-      const updated = prev.map(r => {
-        if (r.id === reservationId) {
-          return {
-            ...r,
-            // Update with streaming progress - this doesn't change the reservation itself
-            // but could be used for UI display of current usage
-          };
+  const addReservation = useCallback(
+    (reservation: CreditReservation) => {
+      setReservations((prev) => {
+        const updated = [...prev, reservation];
+        if (user?.id) {
+          localStorage.setItem(
+            CACHE_KEYS.reservations,
+            JSON.stringify(updated)
+          );
         }
-        return r;
+        return updated;
       });
-      if (user?.id) {
-        localStorage.setItem(CACHE_KEYS.reservations, JSON.stringify(updated));
-      }
-      return updated;
-    });
-  }, [user?.id]);
+    },
+    [user?.id]
+  );
 
-  const removeReservation = useCallback((reservationId: string) => {
-    setReservations(prev => {
-      const updated = prev.filter(r => r.id !== reservationId);
-      if (user?.id) {
-        localStorage.setItem(CACHE_KEYS.reservations, JSON.stringify(updated));
-      }
-      return updated;
-    });
-  }, [user?.id]);
+  const updateReservation = useCallback(
+    (reservationId: string) => {
+      setReservations((prev) => {
+        const updated = prev.map((r) => {
+          if (r.id === reservationId) {
+            return {
+              ...r,
+              // Update with streaming progress - this doesn't change the reservation itself
+              // but could be used for UI display of current usage
+            };
+          }
+          return r;
+        });
+        if (user?.id) {
+          localStorage.setItem(
+            CACHE_KEYS.reservations,
+            JSON.stringify(updated)
+          );
+        }
+        return updated;
+      });
+    },
+    [user?.id]
+  );
 
-  const settleReservation = useCallback((settlement: ReservationSettlement) => {
-    // Remove the settled reservation and update balance
-    removeReservation(settlement.trackerId);
-    
-    // Update balance with refunded credits
-    if (settlement.creditsRefunded > 0 && balance !== null) {
-      const newBalance = balance + settlement.creditsRefunded;
-      updateBalance(newBalance);
-    }
-  }, [removeReservation, balance]);
+  const removeReservation = useCallback(
+    (reservationId: string) => {
+      setReservations((prev) => {
+        const updated = prev.filter((r) => r.id !== reservationId);
+        if (user?.id) {
+          localStorage.setItem(
+            CACHE_KEYS.reservations,
+            JSON.stringify(updated)
+          );
+        }
+        return updated;
+      });
+    },
+    [user?.id]
+  );
+
+  const settleReservation = useCallback(
+    (settlement: ReservationSettlement) => {
+      // Remove the settled reservation and update balance
+      removeReservation(settlement.trackerId);
+
+      // Update balance with refunded credits
+      if (settlement.creditsRefunded > 0 && balance !== null) {
+        const newBalance = balance + settlement.creditsRefunded;
+        updateBalance(newBalance);
+      }
+    },
+    [removeReservation, balance]
+  );
 
   // Manual balance update (for real-time updates)
   const updateBalance = useCallback(
@@ -471,7 +491,8 @@ export function CreditProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const getCreditWarningLevel = useCallback((): CreditWarningLevel => {
-    if (availableBalance === null || availableBalance === undefined) return "none";
+    if (availableBalance === null || availableBalance === undefined)
+      return "none";
 
     if (availableBalance <= 0) return "empty";
     if (availableBalance < 10) return "critical";
@@ -517,7 +538,6 @@ export function CreditProvider({ children }: { children: React.ReactNode }) {
       usageStats,
       isLoadingUsage,
       reservations,
-      isLoadingReservations,
       totalReserved,
       availableBalance,
       error,
@@ -544,7 +564,6 @@ export function CreditProvider({ children }: { children: React.ReactNode }) {
       usageStats,
       isLoadingUsage,
       reservations,
-      isLoadingReservations,
       totalReserved,
       availableBalance,
       error,

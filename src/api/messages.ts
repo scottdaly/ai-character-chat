@@ -31,6 +31,14 @@ interface CreditError {
   subscriptionTier?: string;
 }
 
+// Define proper type for conversation data update
+interface ConversationUpdateData {
+  id: string;
+  title: string;
+  lastMessage: string;
+  updatedAt: string;
+}
+
 export const useMessages = (
   characterId: string,
   conversationId: string,
@@ -38,14 +46,12 @@ export const useMessages = (
   userConversations: UserConversationWithCharacter[],
   isLoadingUserConversations: boolean,
   onConversationUpdate?: () => void,
-  onConversationDataUpdate?: (conversationData: any) => void
+  onConversationDataUpdate?: (conversationData: ConversationUpdateData) => void
 ) => {
-  const { apiFetch, user, subscriptionTier } = useAuth();
+  const { apiFetch, user } = useAuth();
   const {
     checkSufficientCredits,
     recordCreditUsage,
-    hasEnoughCredits,
-    error: creditError,
     clearError: clearCreditError,
   } = useCredit();
 
@@ -110,7 +116,7 @@ export const useMessages = (
   }, [conversationId]);
 
   const loadMessages = useCallback(
-    async (convId: string) => {
+    async (convId: string): Promise<void> => {
       if (isAccessDenied) {
         setMessages([]);
         setConversationTree(null);
@@ -121,15 +127,21 @@ export const useMessages = (
           `/api/conversations/${convId}/messages`
         );
 
-        // Handle both tree structure and legacy linear messages
-        if ("tree" in data && "currentPath" in data) {
+        // Handle both tree structure and legacy linear messages with proper type guards
+        if (
+          data &&
+          typeof data === "object" &&
+          "tree" in data &&
+          "currentPath" in data
+        ) {
           // New tree structure
           const treeData = data as ConversationTree;
           setConversationTree(treeData);
           setMessages(treeData.currentPath);
-        } else {
+        } else if (data && typeof data === "object" && "messages" in data) {
           // Legacy linear messages
-          setMessages((data as { messages: Message[] }).messages);
+          const legacyData = data as { messages: Message[] };
+          setMessages(legacyData.messages);
           setConversationTree(null);
         }
       } catch (err) {
@@ -190,7 +202,7 @@ export const useMessages = (
   const sendMessage = async (
     content: string,
     attachments?: MessageAttachment[]
-  ) => {
+  ): Promise<MessageResponse> => {
     if (isAccessDenied) {
       throw (
         accessError || new Error("Access Denied: Upgrade to send messages.")
@@ -261,7 +273,7 @@ export const useMessages = (
         );
 
         // Handle response and credit tracking
-        if (data.creditsUsed) {
+        if (data.creditsUsed !== undefined) {
           recordCreditUsage(data.creditsUsed);
           setLastCreditUsage({
             creditsUsed: data.creditsUsed,
@@ -312,7 +324,7 @@ export const useMessages = (
       );
 
       // Handle credit tracking
-      if (data.creditsUsed) {
+      if (data.creditsUsed !== undefined) {
         recordCreditUsage(data.creditsUsed);
         setLastCreditUsage({
           creditsUsed: data.creditsUsed,
@@ -373,15 +385,18 @@ export const useMessages = (
         if (err.message.includes("402")) {
           // Parse credit error from API response
           try {
-            const errorData = JSON.parse(err.message.split("402: ")[1] || "{}");
-            throw {
-              error: "Insufficient credits",
-              creditsNeeded: errorData.creditsNeeded,
-              currentBalance: errorData.currentBalance,
-              estimatedCost: errorData.estimatedCost,
-              subscriptionTier: errorData.subscriptionTier,
-            } as CreditError;
-          } catch {
+            const errorMessage = err.message.split("402: ")[1];
+            if (errorMessage) {
+              const errorData = JSON.parse(errorMessage);
+              throw {
+                error: "Insufficient credits",
+                creditsNeeded: errorData.creditsNeeded,
+                currentBalance: errorData.currentBalance,
+                estimatedCost: errorData.estimatedCost,
+                subscriptionTier: errorData.subscriptionTier,
+              } as CreditError;
+            }
+          } catch (parseError) {
             throw {
               error: "Insufficient credits",
               estimatedCost: costEstimate.estimatedCredits,
@@ -397,7 +412,7 @@ export const useMessages = (
     }
   };
 
-  const switchBranch = async (messageId: string) => {
+  const switchBranch = async (messageId: string): Promise<ConversationTree> => {
     try {
       setIsLoading(true);
       const data = await apiFetch<ConversationTree>(
@@ -431,7 +446,13 @@ export const useMessages = (
   const sendMessageStream = async (
     content: string,
     attachments?: MessageAttachment[]
-  ) => {
+  ): Promise<{
+    success: boolean;
+    creditUsage?: {
+      creditsUsed: number;
+      tokenUsage?: { inputTokens: number; outputTokens: number };
+    } | null;
+  }> => {
     if (isAccessDenied) {
       throw (
         accessError || new Error("Access Denied: Upgrade to send messages.")
@@ -542,16 +563,23 @@ export const useMessages = (
             if (!response.ok) {
               // Handle credit errors from streaming endpoint
               if (response.status === 402) {
-                const errorData = await response.json().catch(() => ({}));
-                const creditError: CreditError = {
-                  error: "Insufficient credits",
-                  creditsNeeded: errorData.creditsNeeded,
-                  currentBalance: errorData.currentBalance,
-                  estimatedCost:
-                    errorData.estimatedCost || costEstimate.estimatedCredits,
-                  subscriptionTier: errorData.subscriptionTier,
-                };
-                throw creditError;
+                try {
+                  const errorData = await response.json();
+                  const creditError: CreditError = {
+                    error: "Insufficient credits",
+                    creditsNeeded: errorData.creditsNeeded,
+                    currentBalance: errorData.currentBalance,
+                    estimatedCost:
+                      errorData.estimatedCost || costEstimate.estimatedCredits,
+                    subscriptionTier: errorData.subscriptionTier,
+                  };
+                  throw creditError;
+                } catch (parseError) {
+                  throw {
+                    error: "Insufficient credits",
+                    estimatedCost: costEstimate.estimatedCredits,
+                  } as CreditError;
+                }
               }
 
               throw new Error(
@@ -567,15 +595,15 @@ export const useMessages = (
             const decoder = new TextDecoder();
             let streamingContent = "";
             let finalMessage: Message | null = null;
-            let conversationUpdate: any = null;
+            let conversationUpdate: ConversationUpdateData | null = null;
             let creditUsageInfo: {
               creditsUsed: number;
-              tokenUsage?: any;
+              tokenUsage?: { inputTokens: number; outputTokens: number };
             } | null = null;
             let updateTimeoutRef: NodeJS.Timeout | null = null;
 
             // Stream processing function
-            const processStream = async () => {
+            const processStream = async (): Promise<void> => {
               try {
                 while (true) {
                   const { done, value } = await reader.read();

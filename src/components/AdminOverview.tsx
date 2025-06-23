@@ -5,9 +5,7 @@ import {
   Activity,
   DollarSign,
   TrendingUp,
-  BarChart3,
   PieChart,
-  Calendar,
   Zap,
 } from "lucide-react";
 
@@ -236,7 +234,7 @@ const AdminOverview: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {stats.topUsers.slice(0, 5).map((user, index) => (
+              {stats.topUsers.slice(0, 5).map((user) => (
                 <tr
                   key={user.userId}
                   className="hover:bg-gray-50 dark:hover:bg-gray-700"

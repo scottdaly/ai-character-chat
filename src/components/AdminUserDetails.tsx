@@ -1,17 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { 
+import React, { useState, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
+import {
   ArrowLeft,
-  User,
   Activity,
   DollarSign,
-  Calendar,
   TrendingUp,
   Clock,
   CreditCard,
-  BarChart3
-} from 'lucide-react';
+  BarChart3,
+} from "lucide-react";
 
 interface UserAnalytics {
   userId: string;
@@ -69,14 +67,14 @@ const AdminUserDetails: React.FC = () => {
       setLoading(true);
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - dateRange);
-      
+
       const data = await apiFetch<UserAnalytics>(
         `/api/admin/analytics/user/${userId}?startDate=${startDate.toISOString()}`
       );
-      
+
       setAnalytics(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setLoading(false);
     }
@@ -94,7 +92,7 @@ const AdminUserDetails: React.FC = () => {
     return (
       <div>
         <button
-          onClick={() => navigate('/admin/analytics/users')}
+          onClick={() => navigate("/admin/analytics/users")}
           className="flex items-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 mb-4"
         >
           <ArrowLeft className="w-5 h-5 mr-2" />
@@ -102,7 +100,7 @@ const AdminUserDetails: React.FC = () => {
         </button>
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
           <p className="text-red-800 dark:text-red-200">
-            {error || 'Failed to load user analytics'}
+            {error || "Failed to load user analytics"}
           </p>
         </div>
       </div>
@@ -110,24 +108,24 @@ const AdminUserDetails: React.FC = () => {
   }
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
       minimumFractionDigits: 4,
     }).format(amount);
   };
 
   const formatNumber = (num: number) => {
-    return new Intl.NumberFormat('en-US').format(num);
+    return new Intl.NumberFormat("en-US").format(num);
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   };
 
@@ -139,7 +137,7 @@ const AdminUserDetails: React.FC = () => {
       {/* Header */}
       <div className="mb-8">
         <button
-          onClick={() => navigate('/admin/analytics/users')}
+          onClick={() => navigate("/admin/analytics/users")}
           className="flex items-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 mb-4"
         >
           <ArrowLeft className="w-5 h-5 mr-2" />
@@ -262,7 +260,10 @@ const AdminUserDetails: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {analytics.usageByModel.map((model) => (
-                <tr key={model.modelName} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                <tr
+                  key={model.modelName}
+                  className="hover:bg-gray-50 dark:hover:bg-gray-700"
+                >
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                     {model.modelName}
                   </td>
@@ -306,12 +307,14 @@ const AdminUserDetails: React.FC = () => {
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className={`text-sm font-medium ${
-                    transaction.type === 'credit' 
-                      ? 'text-green-600 dark:text-green-400' 
-                      : 'text-red-600 dark:text-red-400'
-                  }`}>
-                    {transaction.type === 'credit' ? '+' : '-'}
+                  <p
+                    className={`text-sm font-medium ${
+                      transaction.type === "credit"
+                        ? "text-green-600 dark:text-green-400"
+                        : "text-red-600 dark:text-red-400"
+                    }`}
+                  >
+                    {transaction.type === "credit" ? "+" : "-"}
                     {Math.abs(transaction.amount).toFixed(2)}
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">

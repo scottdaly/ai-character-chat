@@ -11,10 +11,7 @@ interface NavbarProps {
   isLoadingSubscription?: boolean;
 }
 
-export default function Navbar({
-  subscriptionTier = "free",
-  isLoadingSubscription = false,
-}: NavbarProps) {
+export default function Navbar({ subscriptionTier = "free" }: NavbarProps) {
   const { logout, user } = useAuth();
   const path = useLocation();
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);

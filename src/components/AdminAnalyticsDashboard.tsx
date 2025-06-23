@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, Link, Outlet, useLocation } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { BarChart3, Users, FileDown, Activity, TrendingUp, DollarSign } from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import { useNavigate, Link, Outlet, useLocation } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
+import { BarChart3, Users, FileDown } from "lucide-react";
 
 const AdminAnalyticsDashboard: React.FC = () => {
   const { user } = useAuth();
@@ -12,7 +12,7 @@ const AdminAnalyticsDashboard: React.FC = () => {
   useEffect(() => {
     // Check if user is admin
     if (!user || !user.isAdmin) {
-      navigate('/');
+      navigate("/");
       return;
     }
     setLoading(false);
@@ -27,9 +27,14 @@ const AdminAnalyticsDashboard: React.FC = () => {
   }
 
   const navItems = [
-    { path: '/admin/analytics', label: 'Overview', icon: BarChart3, exact: true },
-    { path: '/admin/analytics/users', label: 'Users', icon: Users },
-    { path: '/admin/analytics/export', label: 'Export Data', icon: FileDown },
+    {
+      path: "/admin/analytics",
+      label: "Overview",
+      icon: BarChart3,
+      exact: true,
+    },
+    { path: "/admin/analytics/users", label: "Users", icon: Users },
+    { path: "/admin/analytics/export", label: "Export Data", icon: FileDown },
   ];
 
   const isActive = (path: string, exact = false) => {
@@ -57,13 +62,15 @@ const AdminAnalyticsDashboard: React.FC = () => {
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.path, item.exact);
-            
+
             return (
               <Link
                 key={item.path}
                 to={item.path}
                 className={`flex items-center px-6 py-3 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
-                  active ? 'bg-blue-50 dark:bg-gray-700 border-r-4 border-blue-500' : ''
+                  active
+                    ? "bg-blue-50 dark:bg-gray-700 border-r-4 border-blue-500"
+                    : ""
                 }`}
               >
                 <Icon className="w-5 h-5 mr-3" />

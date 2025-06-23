@@ -11,9 +11,7 @@ import {
   FiEdit3,
   FiTrash2,
   FiMoreVertical,
-  FiRotateCcw,
 } from "react-icons/fi";
-import { AiFillEdit } from "react-icons/ai";
 import { useAuth } from "../contexts/AuthContext";
 import { useSidebar } from "../contexts/SidebarContext";
 import { useMessages } from "../api/messages";
@@ -22,7 +20,7 @@ import { useConversations } from "../api/conversations";
 import { useUserConversations } from "../api/useUserConversations";
 import { useCharacter } from "../api/characters";
 import { checkCharacterAccess } from "../api/characterAccess";
-import { HiArrowSmRight, HiDotsVertical } from "react-icons/hi";
+import { HiArrowSmRight } from "react-icons/hi";
 import { MessageAttachment } from "../types";
 import { supportsImages } from "../config/models";
 import Toast from "./Toast";
@@ -33,7 +31,6 @@ import { MessageTreeNode } from "../types";
 import MarkdownMessage from "./MarkdownMessage";
 import UserAvatar from "./UserAvatar";
 import { useCredit } from "../contexts/CreditContext";
-import { useData } from "../contexts/DataContext";
 import InsufficientCreditsModal from "./InsufficientCreditsModal";
 import CreditBalance from "./CreditBalance";
 

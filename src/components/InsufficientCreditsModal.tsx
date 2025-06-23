@@ -4,7 +4,6 @@ import {
   FiAlertTriangle,
   FiCreditCard,
   FiTrendingUp,
-  FiX,
   FiInfo,
 } from "react-icons/fi";
 import { useCredit } from "../contexts/CreditContext";
@@ -36,7 +35,7 @@ export default function InsufficientCreditsModal({
   errorMessage,
   context,
 }: InsufficientCreditsModalProps) {
-  const { formatCredits, refreshBalance } = useCredit();
+  const { formatCredits } = useCredit();
   const { apiFetch } = useAuth();
   const [isUpgrading, setIsUpgrading] = useState(false);
 

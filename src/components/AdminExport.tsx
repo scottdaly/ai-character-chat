@@ -1,22 +1,21 @@
-import React, { useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
-import { 
-  FileDown, 
+import React, { useState } from "react";
+import { useAuth } from "../contexts/AuthContext";
+import {
   Calendar,
   Download,
   FileSpreadsheet,
   FileJson,
   User,
-  AlertCircle
-} from 'lucide-react';
+  AlertCircle,
+} from "lucide-react";
 
 const AdminExport: React.FC = () => {
   const { apiFetch } = useAuth();
-  const [exportType, setExportType] = useState<'all' | 'user'>('all');
-  const [format, setFormat] = useState<'csv' | 'json'>('csv');
-  const [userId, setUserId] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [exportType, setExportType] = useState<"all" | "user">("all");
+  const [format, setFormat] = useState<"csv" | "json">("csv");
+  const [userId, setUserId] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -28,24 +27,26 @@ const AdminExport: React.FC = () => {
       setSuccess(false);
 
       const params = new URLSearchParams({ format });
-      
-      if (exportType === 'user' && userId) {
-        params.append('userId', userId);
+
+      if (exportType === "user" && userId) {
+        params.append("userId", userId);
       }
-      
+
       if (startDate) {
-        params.append('startDate', new Date(startDate).toISOString());
+        params.append("startDate", new Date(startDate).toISOString());
       }
-      
+
       if (endDate) {
-        params.append('endDate', new Date(endDate).toISOString());
+        params.append("endDate", new Date(endDate).toISOString());
       }
 
       // For CSV, we need to fetch directly to get the blob
-      if (format === 'csv') {
+      if (format === "csv") {
         const token = localStorage.getItem("token");
         const response = await fetch(
-          `${import.meta.env.VITE_API_URL}/api/admin/analytics/export?${params}`,
+          `${
+            import.meta.env.VITE_API_URL
+          }/api/admin/analytics/export?${params}`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -54,14 +55,16 @@ const AdminExport: React.FC = () => {
         );
 
         if (!response.ok) {
-          throw new Error('Export failed');
+          throw new Error("Export failed");
         }
 
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
+        const a = document.createElement("a");
         a.href = url;
-        a.download = `usage-export-${new Date().toISOString().split('T')[0]}.csv`;
+        a.download = `usage-export-${
+          new Date().toISOString().split("T")[0]
+        }.csv`;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
@@ -69,11 +72,15 @@ const AdminExport: React.FC = () => {
       } else {
         // For JSON, use apiFetch
         const data = await apiFetch(`/api/admin/analytics/export?${params}`);
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify(data, null, 2)], {
+          type: "application/json",
+        });
         const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
+        const a = document.createElement("a");
         a.href = url;
-        a.download = `usage-export-${new Date().toISOString().split('T')[0]}.json`;
+        a.download = `usage-export-${
+          new Date().toISOString().split("T")[0]
+        }.json`;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
@@ -82,14 +89,16 @@ const AdminExport: React.FC = () => {
 
       setSuccess(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Export failed');
+      setError(err instanceof Error ? err.message : "Export failed");
     } finally {
       setLoading(false);
     }
   };
 
-  const today = new Date().toISOString().split('T')[0];
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const today = new Date().toISOString().split("T")[0];
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .split("T")[0];
 
   return (
     <div>
@@ -114,27 +123,35 @@ const AdminExport: React.FC = () => {
                 <input
                   type="radio"
                   value="all"
-                  checked={exportType === 'all'}
-                  onChange={(e) => setExportType(e.target.value as 'all' | 'user')}
+                  checked={exportType === "all"}
+                  onChange={(e) =>
+                    setExportType(e.target.value as "all" | "user")
+                  }
                   className="mr-2 text-blue-600 focus:ring-blue-500"
                 />
-                <span className="text-gray-700 dark:text-gray-300">All Users</span>
+                <span className="text-gray-700 dark:text-gray-300">
+                  All Users
+                </span>
               </label>
               <label className="flex items-center">
                 <input
                   type="radio"
                   value="user"
-                  checked={exportType === 'user'}
-                  onChange={(e) => setExportType(e.target.value as 'all' | 'user')}
+                  checked={exportType === "user"}
+                  onChange={(e) =>
+                    setExportType(e.target.value as "all" | "user")
+                  }
                   className="mr-2 text-blue-600 focus:ring-blue-500"
                 />
-                <span className="text-gray-700 dark:text-gray-300">Specific User</span>
+                <span className="text-gray-700 dark:text-gray-300">
+                  Specific User
+                </span>
               </label>
             </div>
           </div>
 
           {/* User ID Input */}
-          {exportType === 'user' && (
+          {exportType === "user" && (
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 <User className="inline w-4 h-4 mr-1" />
@@ -194,29 +211,33 @@ const AdminExport: React.FC = () => {
             </label>
             <div className="grid grid-cols-2 gap-4">
               <button
-                onClick={() => setFormat('csv')}
+                onClick={() => setFormat("csv")}
                 className={`p-4 rounded-lg border-2 transition-colors ${
-                  format === 'csv'
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                    : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
+                  format === "csv"
+                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                    : "border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500"
                 }`}
               >
                 <FileSpreadsheet className="w-8 h-8 mx-auto mb-2 text-green-600 dark:text-green-400" />
-                <p className="text-sm font-medium text-gray-900 dark:text-white">CSV</p>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                  CSV
+                </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   For Excel/Sheets
                 </p>
               </button>
               <button
-                onClick={() => setFormat('json')}
+                onClick={() => setFormat("json")}
                 className={`p-4 rounded-lg border-2 transition-colors ${
-                  format === 'json'
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                    : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
+                  format === "json"
+                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                    : "border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500"
                 }`}
               >
                 <FileJson className="w-8 h-8 mx-auto mb-2 text-blue-600 dark:text-blue-400" />
-                <p className="text-sm font-medium text-gray-900 dark:text-white">JSON</p>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                  JSON
+                </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   For programming
                 </p>
@@ -245,7 +266,7 @@ const AdminExport: React.FC = () => {
           {/* Export Button */}
           <button
             onClick={handleExport}
-            disabled={loading || (exportType === 'user' && !userId)}
+            disabled={loading || (exportType === "user" && !userId)}
             className="w-full flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {loading ? (
@@ -270,8 +291,8 @@ const AdminExport: React.FC = () => {
           <div className="space-y-2">
             <button
               onClick={() => {
-                setExportType('all');
-                setFormat('csv');
+                setExportType("all");
+                setFormat("csv");
                 setStartDate(thirtyDaysAgo);
                 setEndDate(today);
               }}
@@ -281,10 +302,10 @@ const AdminExport: React.FC = () => {
             </button>
             <button
               onClick={() => {
-                setExportType('all');
-                setFormat('json');
-                setStartDate('');
-                setEndDate('');
+                setExportType("all");
+                setFormat("json");
+                setStartDate("");
+                setEndDate("");
               }}
               className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
             >

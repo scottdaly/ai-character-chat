@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, ReactNode } from "react";
+import { useRef, useEffect, ReactNode } from "react";
 import { FiX, FiAlertTriangle, FiAlertCircle } from "react-icons/fi";
 
 export type ModalIcon = "alert" | "warning" | "none";
