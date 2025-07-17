@@ -1,0 +1,3 @@
+This is Nevermade AI, a Character based AI platform where users can create and chat with various characters.
+The frontend is Vite + React at the folder root level (ai-character-chat folder) and the backend is an express server in the folder "ai-chat-api", nested within the frontend folder.
+It is hosted on a digital ocean droplet using caddy, and uses stripe for subscription billing.

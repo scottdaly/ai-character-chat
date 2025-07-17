@@ -3726,8 +3726,6 @@ app.post("/api/create-subscription", authenticateToken, async (req, res) => {
       allow_promotion_codes: true,
       billing_address_collection: "auto",
       payment_method_types: ["card"],
-      // Ensure Stripe sends automatic receipt emails
-      customer_email: req.user.email,
     });
 
     res.json({ url: session.url });
