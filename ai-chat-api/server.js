@@ -152,7 +152,7 @@ const User = sequelize.define("User", {
   },
   creditBalance: {
     type: DataTypes.DECIMAL(10, 4),
-    defaultValue: 0,
+    defaultValue: 1000,
     allowNull: false,
     validate: {
       min: -100, // Allow small negative balance for edge cases
