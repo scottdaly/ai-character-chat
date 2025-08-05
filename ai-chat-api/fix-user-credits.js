@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 require("dotenv").config();
 const { Sequelize, DataTypes } = require("sequelize");
 const path = require("path");

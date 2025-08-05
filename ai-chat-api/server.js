@@ -37,6 +37,7 @@ const {
 const { defineCreditModels } = require("./models/creditModels");
 const { defineReservationModels } = require("./models/reservationModels");
 const CreditService = require("./services/creditService");
+const CreditRefreshService = require("./services/creditRefreshService");
 const StreamingTokenTracker = require("./services/streamingTokenTracker");
 const ReservationCleanupService = require("./services/reservationCleanupService");
 const TokenExtractorService = require("./services/tokenExtractorService");
@@ -161,6 +162,26 @@ const User = sequelize.define("User", {
   lastCreditRefresh: {
     type: DataTypes.DATE,
     allowNull: true,
+  },
+  creditRefreshHold: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    allowNull: false,
+  },
+  creditRefreshDay: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    validate: {
+      min: 1,
+      max: 31,
+    },
+  },
+  customCreditAmount: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    validate: {
+      min: 0,
+    },
   },
 });
 
@@ -330,6 +351,7 @@ reservationModels.ReservationSettlement.belongsTo(reservationModels.CreditReserv
 
 // Initialize credit services
 let creditService;
+let creditRefreshService;
 let tokenExtractor;
 let analyticsService;
 let streamingTokenTracker;
@@ -453,6 +475,9 @@ const initializeStripePortal = async () => {
     creditService = new CreditService(sequelize, allModels, tokenizerService);
     tokenExtractor = new TokenExtractorService();
     
+    // Initialize credit refresh service
+    creditRefreshService = new CreditRefreshService(sequelize, allModels, creditService);
+    
     // Initialize streaming token tracker
     streamingTokenTracker = new StreamingTokenTracker(creditService, tokenizerService);
     
@@ -465,6 +490,13 @@ const initializeStripePortal = async () => {
     // Start the reservation cleanup service
     const cleanupIntervalMinutes = process.env.CLEANUP_INTERVAL_MINUTES || 5;
     reservationCleanupService.start(parseInt(cleanupIntervalMinutes));
+    
+    // Start the credit refresh service if enabled
+    if (process.env.CREDIT_REFRESH_ENABLED !== 'false') {
+      const refreshIntervalHours = process.env.CREDIT_REFRESH_INTERVAL_HOURS || 1;
+      creditRefreshService.start(parseInt(refreshIntervalHours));
+      console.log(`Credit refresh service started with ${refreshIntervalHours}-hour intervals`);
+    }
 
     console.log("Credit system initialized successfully with tokenizer support");
     console.log(`Reservation cleanup service started with ${cleanupIntervalMinutes}-minute intervals`);
@@ -3614,6 +3646,197 @@ app.post("/auth/admin-login", async (req, res) => {
   );
 
   res.json({ token });
+});
+
+// Credit Refresh Admin Endpoints
+app.post("/api/admin/users/:userId/refresh-credits", authenticateToken, async (req, res) => {
+  if (!req.user.isAdmin) {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+
+  try {
+    const { userId } = req.params;
+    const { amount, reason } = req.body;
+
+    const result = await creditRefreshService.refreshUserCredits(userId, {
+      amount,
+      reason: reason || 'manual',
+      force: true,
+      metadata: {
+        adminId: req.user.adminUsername || req.user.id,
+        ip: req.ip
+      }
+    });
+
+    if (result.success) {
+      res.json({
+        message: "Credits refreshed successfully",
+        ...result
+      });
+    } else {
+      res.status(400).json({
+        error: result.error,
+        details: result.details
+      });
+    }
+  } catch (error) {
+    console.error("Manual credit refresh error:", error);
+    res.status(500).json({ error: "Failed to refresh credits" });
+  }
+});
+
+app.post("/api/admin/credits/bulk-refresh", authenticateToken, async (req, res) => {
+  if (!req.user.isAdmin) {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+
+  try {
+    const { userIds, dryRun } = req.body;
+
+    // Override dry run setting if specified
+    if (dryRun !== undefined) {
+      creditRefreshService.config.dryRun = dryRun;
+    }
+
+    let results;
+    if (userIds && userIds.length > 0) {
+      // Refresh specific users
+      results = {
+        total: userIds.length,
+        successful: 0,
+        failed: 0,
+        details: []
+      };
+
+      for (const userId of userIds) {
+        const result = await creditRefreshService.refreshUserCredits(userId, {
+          reason: 'bulk_manual',
+          force: true
+        });
+        
+        if (result.success) {
+          results.successful++;
+        } else {
+          results.failed++;
+        }
+        results.details.push(result);
+      }
+    } else {
+      // Refresh all eligible users
+      results = await creditRefreshService.refreshAllEligibleUsers();
+    }
+
+    res.json(results);
+  } catch (error) {
+    console.error("Bulk credit refresh error:", error);
+    res.status(500).json({ error: "Failed to perform bulk refresh" });
+  }
+});
+
+app.get("/api/admin/users/:userId/refresh-history", authenticateToken, async (req, res) => {
+  if (!req.user.isAdmin) {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+
+  try {
+    const { userId } = req.params;
+    const history = await creditRefreshService.models.CreditRefreshHistory.findAll({
+      where: { userId },
+      order: [['createdAt', 'DESC']],
+      limit: 50
+    });
+
+    res.json(history);
+  } catch (error) {
+    console.error("Get refresh history error:", error);
+    res.status(500).json({ error: "Failed to get refresh history" });
+  }
+});
+
+app.put("/api/admin/users/:userId/refresh-settings", authenticateToken, async (req, res) => {
+  if (!req.user.isAdmin) {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+
+  try {
+    const { userId } = req.params;
+    const { creditRefreshHold, creditRefreshDay, customCreditAmount } = req.body;
+
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const updates = {};
+    if (creditRefreshHold !== undefined) updates.creditRefreshHold = creditRefreshHold;
+    if (creditRefreshDay !== undefined) updates.creditRefreshDay = creditRefreshDay;
+    if (customCreditAmount !== undefined) updates.customCreditAmount = customCreditAmount;
+
+    await user.update(updates);
+
+    res.json({
+      message: "Refresh settings updated",
+      settings: {
+        creditRefreshHold: user.creditRefreshHold,
+        creditRefreshDay: user.creditRefreshDay,
+        customCreditAmount: user.customCreditAmount
+      }
+    });
+  } catch (error) {
+    console.error("Update refresh settings error:", error);
+    res.status(500).json({ error: "Failed to update refresh settings" });
+  }
+});
+
+app.get("/api/admin/credits/refresh-stats", authenticateToken, async (req, res) => {
+  if (!req.user.isAdmin) {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+
+  try {
+    const { startDate, endDate } = req.query;
+    const stats = await creditRefreshService.getRefreshStatistics({
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined
+    });
+
+    res.json(stats);
+  } catch (error) {
+    console.error("Get refresh statistics error:", error);
+    res.status(500).json({ error: "Failed to get refresh statistics" });
+  }
+});
+
+// User Credit Refresh Endpoints
+app.get("/api/user/credits/next-refresh", authenticateRequest, async (req, res) => {
+  try {
+    const refreshInfo = await creditRefreshService.getNextRefreshInfo(req.user.id);
+    
+    if (refreshInfo.error) {
+      return res.status(400).json({ error: refreshInfo.error });
+    }
+
+    res.json(refreshInfo);
+  } catch (error) {
+    console.error("Get next refresh error:", error);
+    res.status(500).json({ error: "Failed to get refresh information" });
+  }
+});
+
+app.get("/api/user/credits/refresh-history", authenticateRequest, async (req, res) => {
+  try {
+    const history = await creditRefreshService.models.CreditRefreshHistory.findAll({
+      where: { userId: req.user.id },
+      order: [['createdAt', 'DESC']],
+      limit: 10,
+      attributes: ['id', 'refreshType', 'creditsAdded', 'creditsBefore', 'creditsAfter', 'createdAt']
+    });
+
+    res.json(history);
+  } catch (error) {
+    console.error("Get user refresh history error:", error);
+    res.status(500).json({ error: "Failed to get refresh history" });
+  }
 });
 
 // Add Stripe webhook endpoint (before other routes)
