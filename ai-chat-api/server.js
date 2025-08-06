@@ -3808,7 +3808,7 @@ app.get("/api/admin/credits/refresh-stats", authenticateToken, async (req, res) 
 });
 
 // User Credit Refresh Endpoints
-app.get("/api/user/credits/next-refresh", authenticateRequest, async (req, res) => {
+app.get("/api/user/credits/next-refresh", authenticateToken, async (req, res) => {
   try {
     const refreshInfo = await creditRefreshService.getNextRefreshInfo(req.user.id);
     
@@ -3823,7 +3823,7 @@ app.get("/api/user/credits/next-refresh", authenticateRequest, async (req, res) 
   }
 });
 
-app.get("/api/user/credits/refresh-history", authenticateRequest, async (req, res) => {
+app.get("/api/user/credits/refresh-history", authenticateToken, async (req, res) => {
   try {
     const history = await creditRefreshService.models.CreditRefreshHistory.findAll({
       where: { userId: req.user.id },
